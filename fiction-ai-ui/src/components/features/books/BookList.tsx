@@ -28,17 +28,17 @@ export function BookList({ books, activeBookId, onSetActive, isLoading }: BookLi
                 const isActive = book.book_id === activeBookId;
                 return (
                     <Card key={book.book_id} className={cn(
-                        "transition-all duration-200 border border-slate-200 dark:border-slate-800",
-                        isActive ? "ring-2 ring-blue-500 ring-offset-2 border-transparent" : "hover:border-slate-300 dark:hover:border-slate-700"
+                        "transition-all duration-200 border-border bg-card/40 backdrop-blur-sm",
+                        isActive ? "ring-2 ring-primary ring-offset-2 ring-offset-background border-transparent" : "hover:border-primary/50"
                     )}>
                         <CardHeader>
                             <div className="flex items-start justify-between">
                                 <CardTitle className="text-lg font-bold">
                                     {book.title}
                                 </CardTitle>
-                                {isActive && <Badge className="bg-blue-500">Active</Badge>}
+                                {isActive && <Badge className="bg-primary text-primary-foreground">Active</Badge>}
                             </div>
-                            <CardDescription className="font-mono text-[10px] mt-1 opacity-50">
+                            <CardDescription className="font-mono text-[10px] mt-1 opacity-70">
                                 ID: {book.book_id}
                             </CardDescription>
                         </CardHeader>

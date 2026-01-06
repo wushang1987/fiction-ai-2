@@ -13,15 +13,15 @@ interface ChapterListProps {
 
 export function ChapterList({ chapters, activeChapterNumber, onSelect, isLoading }: ChapterListProps) {
     return (
-        <div className="flex flex-col h-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden">
-            <div className="p-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
-                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Chapters</h3>
+        <div className="flex flex-col h-full bg-card border border-border rounded-xl shadow-sm overflow-hidden">
+            <div className="p-4 border-b border-border bg-muted/30">
+                <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Chapters</h3>
             </div>
             <ScrollArea className="flex-1">
                 <div className="p-2 space-y-1">
                     {isLoading && chapters.length === 0 ? (
                         <div className="flex justify-center py-10">
-                            <Loader2 className="h-6 w-6 animate-spin text-slate-300" />
+                            <Loader2 className="h-6 w-6 animate-spin text-muted" />
                         </div>
                     ) : (
                         chapters.map((ch) => (
@@ -30,11 +30,11 @@ export function ChapterList({ chapters, activeChapterNumber, onSelect, isLoading
                                 variant={activeChapterNumber === ch.number ? "secondary" : "ghost"}
                                 className={cn(
                                     "w-full justify-start text-left h-auto py-3 px-3",
-                                    activeChapterNumber === ch.number ? "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300" : "text-slate-600 dark:text-slate-400"
+                                    activeChapterNumber === ch.number ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"
                                 )}
                                 onClick={() => onSelect(ch)}
                             >
-                                <FileEdit className={cn("mr-3 h-4 w-4 shrink-0", activeChapterNumber === ch.number ? "text-blue-600" : "opacity-40")} />
+                                <FileEdit className={cn("mr-3 h-4 w-4 shrink-0", activeChapterNumber === ch.number ? "text-primary" : "opacity-40")} />
                                 <div className="flex flex-col min-w-0">
                                     <span className="text-xs opacity-50 font-medium">No. {ch.number}</span>
                                     <span className="truncate text-sm font-semibold">{ch.title}</span>

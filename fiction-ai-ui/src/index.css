@@ -34,71 +34,71 @@
 }
 
 :root {
-  --background: 210 20% 98%;
+  --background: hsl(210 20% 98%);
   /* Clean crisp white/gray */
-  --foreground: 224 71% 4%;
+  --foreground: hsl(224 71% 4%);
 
-  --card: 0 0% 100%;
-  --card-foreground: 224 71% 4%;
+  --card: hsl(0 0% 100%);
+  --card-foreground: hsl(224 71% 4%);
 
-  --popover: 0 0% 100%;
-  --popover-foreground: 224 71% 4%;
+  --popover: hsl(0 0% 100%);
+  --popover-foreground: hsl(224 71% 4%);
 
-  --primary: 221 83% 53%;
+  --primary: hsl(221 83% 53%);
   /* Classic Professional Blue */
-  --primary-foreground: 210 20% 98%;
+  --primary-foreground: hsl(210 20% 98%);
 
-  --secondary: 210 20% 96%;
-  --secondary-foreground: 224 71% 4%;
+  --secondary: hsl(210 20% 96%);
+  --secondary-foreground: hsl(224 71% 4%);
 
-  --muted: 210 20% 96%;
-  --muted-foreground: 220 10% 46%;
+  --muted: hsl(210 20% 96%);
+  --muted-foreground: hsl(220 10% 46%);
 
-  --accent: 210 20% 96%;
-  --accent-foreground: 224 71% 4%;
+  --accent: hsl(210 20% 96%);
+  --accent-foreground: hsl(224 71% 4%);
 
-  --destructive: 0 84% 60%;
-  --destructive-foreground: 210 20% 98%;
+  --destructive: hsl(0 84% 60%);
+  --destructive-foreground: hsl(210 20% 98%);
 
-  --border: 220 13% 91%;
-  --input: 220 13% 91%;
-  --ring: 221 83% 53%;
+  --border: hsl(220 13% 91%);
+  --input: hsl(220 13% 91%);
+  --ring: hsl(221 83% 53%);
 
   --radius: 0.5rem;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: 224 71% 2%;
-    --foreground: 213 31% 95%;
+    --background: hsl(224 71% 2%);
+    --foreground: hsl(213 31% 95%);
 
-    --card: 216 34% 12%;
+    --card: hsl(216 34% 12%);
     /* Lighter card background for elevation */
-    --card-foreground: 213 31% 95%;
+    --card-foreground: hsl(213 31% 95%);
 
-    --popover: 224 71% 4%;
-    --popover-foreground: 213 31% 95%;
+    --popover: hsl(224 71% 4%);
+    --popover-foreground: hsl(213 31% 95%);
 
-    --primary: 210 40% 98%;
-    --primary-foreground: 222 47% 11%;
+    --primary: hsl(210 40% 98%);
+    --primary-foreground: hsl(222 47% 11%);
 
-    --secondary: 215 28% 17%;
-    --secondary-foreground: 210 40% 98%;
+    --secondary: hsl(215 28% 17%);
+    --secondary-foreground: hsl(210 40% 98%);
 
-    --muted: 215 28% 12%;
-    --muted-foreground: 215 20% 75%;
+    --muted: hsl(215 28% 12%);
+    --muted-foreground: hsl(215 20% 75%);
     /* Brighter muted text */
 
-    --accent: 215 28% 17%;
-    --accent-foreground: 210 40% 98%;
+    --accent: hsl(215 28% 17%);
+    --accent-foreground: hsl(210 40% 98%);
 
-    --destructive: 0 62% 30%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: hsl(0 62% 30%);
+    --destructive-foreground: hsl(210 40% 98%);
 
-    --border: 216 34% 22%;
+    --border: hsl(216 34% 22%);
     /* More visible borders */
-    --input: 216 34% 17%;
-    --ring: 221 83% 53%;
+    --input: hsl(216 34% 17%);
+    --ring: hsl(221 83% 53%);
   }
 }
 

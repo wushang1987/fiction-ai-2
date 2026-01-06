@@ -259,8 +259,8 @@ function App() {
     >
       <div className="space-y-8 pb-20">
         <header>
-          <h1 className="text-3xl font-bold text-slate-900 dark:text-white">{viewTitles[activeView]}</h1>
-          <p className="text-slate-500 mt-1">AI-Powered Novel Writing Assistant</p>
+          <h1 className="text-3xl font-bold text-foreground">{viewTitles[activeView]}</h1>
+          <p className="text-muted-foreground mt-1">AI-Powered Novel Writing Assistant</p>
         </header>
 
         <section className="animate-in fade-in slide-in-from-bottom-2 duration-500">

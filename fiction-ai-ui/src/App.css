@@ -1,0 +1,7 @@
+/* 
+  Global styles managed by Tailwind in index.css.
+  Keep this for any specific overrides if necessary.
+*/
+.prose {
+  max-width: 80ch;
+}

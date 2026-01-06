@@ -67,39 +67,37 @@
   --radius: 0.5rem;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: hsl(224 71% 2%);
-    --foreground: hsl(213 31% 95%);
+.dark {
+  --background: hsl(224 71% 2%);
+  --foreground: hsl(213 31% 95%);
 
-    --card: hsl(216 34% 12%);
-    /* Lighter card background for elevation */
-    --card-foreground: hsl(213 31% 95%);
+  --card: hsl(216 34% 12%);
+  /* Lighter card background for elevation */
+  --card-foreground: hsl(213 31% 95%);
 
-    --popover: hsl(224 71% 4%);
-    --popover-foreground: hsl(213 31% 95%);
+  --popover: hsl(224 71% 4%);
+  --popover-foreground: hsl(213 31% 95%);
 
-    --primary: hsl(210 40% 98%);
-    --primary-foreground: hsl(222 47% 11%);
+  --primary: hsl(210 40% 98%);
+  --primary-foreground: hsl(222 47% 11%);
 
-    --secondary: hsl(215 28% 17%);
-    --secondary-foreground: hsl(210 40% 98%);
+  --secondary: hsl(215 28% 17%);
+  --secondary-foreground: hsl(210 40% 98%);
 
-    --muted: hsl(215 28% 12%);
-    --muted-foreground: hsl(215 20% 75%);
-    /* Brighter muted text */
+  --muted: hsl(215 28% 12%);
+  --muted-foreground: hsl(215 20% 75%);
+  /* Brighter muted text */
 
-    --accent: hsl(215 28% 17%);
-    --accent-foreground: hsl(210 40% 98%);
+  --accent: hsl(215 28% 17%);
+  --accent-foreground: hsl(210 40% 98%);
 
-    --destructive: hsl(0 62% 30%);
-    --destructive-foreground: hsl(210 40% 98%);
+  --destructive: hsl(0 62% 30%);
+  --destructive-foreground: hsl(210 40% 98%);
 
-    --border: hsl(216 34% 22%);
-    /* More visible borders */
-    --input: hsl(216 34% 17%);
-    --ring: hsl(221 83% 53%);
-  }
+  --border: hsl(216 34% 22%);
+  /* More visible borders */
+  --input: hsl(216 34% 17%);
+  --ring: hsl(221 83% 53%);
 }
 
 @layer base {

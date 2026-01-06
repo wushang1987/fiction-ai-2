@@ -12,6 +12,7 @@ import { OutlineView } from "./components/features/outline/OutlineView";
 import { ChapterList } from "./components/features/chapters/ChapterList";
 import { ChapterEditor } from "./components/features/chapters/ChapterEditor";
 import { SnippetManager } from "./components/features/snippets/SnippetManager";
+import { ThemeToggle } from "./components/layout/ThemeToggle";
 
 import { Toaster } from "sonner";
 
@@ -44,6 +45,26 @@ function App() {
   const [snippetState, setSnippetState] = useState<LoadState>("idle");
   const [snippetResults, setSnippetResults] = useState<Snippet[]>([]);
   const [hasSearchedSnippets, setHasSearchedSnippets] = useState(false);
+
+  // --- Theme ---
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    const saved = localStorage.getItem("theme");
+    if (saved) return saved === "dark";
+    return window.matchMedia("(prefers-color-scheme: dark)").matches;
+  });
+
+  useEffect(() => {
+    const root = window.document.documentElement;
+    if (isDarkMode) {
+      root.classList.add("dark");
+      localStorage.setItem("theme", "dark");
+    } else {
+      root.classList.remove("dark");
+      localStorage.setItem("theme", "light");
+    }
+  }, [isDarkMode]);
+
+  const toggleTheme = () => setIsDarkMode(!isDarkMode);
 
   // --- API ---
   async function refreshStatus() {
@@ -258,9 +279,12 @@ function App() {
       sidebar={<Sidebar activeTab={activeView} onTabChange={setActiveView} statusText={statusText} />}
     >
       <div className="space-y-8 pb-20">
-        <header>
-          <h1 className="text-3xl font-bold text-foreground">{viewTitles[activeView]}</h1>
-          <p className="text-muted-foreground mt-1">AI-Powered Novel Writing Assistant</p>
+        <header className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-foreground">{viewTitles[activeView]}</h1>
+            <p className="text-muted-foreground mt-1">AI-Powered Novel Writing Assistant</p>
+          </div>
+          <ThemeToggle isDarkMode={isDarkMode} onToggle={toggleTheme} />
         </header>
 
         <section className="animate-in fade-in slide-in-from-bottom-2 duration-500">

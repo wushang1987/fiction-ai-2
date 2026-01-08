@@ -6,15 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from .paths import (
-    book_chat_log_file,
-    book_chapters_dir,
-    book_chapters_index_file,
-    book_dir,
-    book_file,
-    book_outline_file,
-    book_sessions_dir,
-)
+from .mongodb import get_collection
 
 
 def _now_iso() -> str:
@@ -35,13 +27,12 @@ class BookState:
 
 
 def ensure_book_dirs(workspace_root: Path, book_id: str) -> None:
-    book_dir(workspace_root, book_id).mkdir(parents=True, exist_ok=True)
-    book_chapters_dir(workspace_root, book_id).mkdir(parents=True, exist_ok=True)
-    book_sessions_dir(workspace_root, book_id).mkdir(parents=True, exist_ok=True)
+    # No directories needed for MongoDB
+    pass
 
 
 def save_book(workspace_root: Path, state: BookState) -> None:
-    ensure_book_dirs(workspace_root, state.book_id)
+    col = get_collection("books")
     payload: dict[str, Any] = {
         "book_id": state.book_id,
         "title": state.title,
@@ -53,13 +44,15 @@ def save_book(workspace_root: Path, state: BookState) -> None:
         "created_at": state.created_at,
         "updated_at": state.updated_at,
     }
-    book_file(workspace_root, state.book_id).write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    col.replace_one({"book_id": state.book_id}, payload, upsert=True)
 
 
 def load_book(workspace_root: Path, book_id: str) -> BookState:
-    data = json.loads(book_file(workspace_root, book_id).read_text(encoding="utf-8"))
+    col = get_collection("books")
+    data = col.find_one({"book_id": book_id})
+    if not data:
+        raise FileNotFoundError(f"Book {book_id} not found in MongoDB")
+    
     return BookState(
         book_id=str(data["book_id"]),
         title=str(data.get("title", "Untitled")),
@@ -98,27 +91,31 @@ def create_book_state(
 
 
 def save_outline(workspace_root: Path, book_id: str, outline_markdown: str) -> None:
-    ensure_book_dirs(workspace_root, book_id)
-    book_outline_file(workspace_root, book_id).write_text(outline_markdown, encoding="utf-8")
+    col = get_collection("outlines")
+    col.replace_one(
+        {"book_id": book_id},
+        {"book_id": book_id, "outline_markdown": outline_markdown, "updated_at": _now_iso()},
+        upsert=True
+    )
 
 
 def load_outline(workspace_root: Path, book_id: str) -> str | None:
-    path = book_outline_file(workspace_root, book_id)
-    if not path.exists():
-        return None
-    return path.read_text(encoding="utf-8")
+    col = get_collection("outlines")
+    doc = col.find_one({"book_id": book_id})
+    return doc["outline_markdown"] if doc else None
 
 
 def _load_chapter_index(workspace_root: Path, book_id: str) -> list[dict[str, Any]]:
-    path = book_chapters_index_file(workspace_root, book_id)
-    if not path.exists():
-        return []
-    return json.loads(path.read_text(encoding="utf-8"))
+    col = get_collection("chapters")
+    # Return metadata only
+    docs = col.find({"book_id": book_id}, {"number": 1, "title": 1, "updated_at": 1, "_id": 0})
+    return list(docs)
 
 
 def _save_chapter_index(workspace_root: Path, book_id: str, items: list[dict[str, Any]]) -> None:
-    path = book_chapters_index_file(workspace_root, book_id)
-    path.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
+    # In MongoDB, we don't strictly need a separate index, as we can query the chapters collection.
+    # But for compatibility, we ensure chapters exist or metadata is updated.
+    pass
 
 
 def next_chapter_number(workspace_root: Path, book_id: str) -> int:
@@ -129,30 +126,23 @@ def next_chapter_number(workspace_root: Path, book_id: str) -> int:
 
 
 def list_chapters(workspace_root: Path, book_id: str) -> list[dict[str, Any]]:
-    """Return the chapter index items sorted by chapter number.
-
-    Each item is a dict with: number (int), title (str), updated_at (str).
-    """
     items = _load_chapter_index(workspace_root, book_id)
     items.sort(key=lambda x: int(x.get("number", 0)))
     return items
 
 
 def load_chapter(workspace_root: Path, book_id: str, *, number: int) -> str | None:
-    """Load chapter markdown by number. Returns None if the file doesn't exist."""
-    path = book_chapters_dir(workspace_root, book_id) / f"{int(number):04d}.md"
-    if not path.exists():
-        return None
-    return path.read_text(encoding="utf-8")
+    col = get_collection("chapters")
+    doc = col.find_one({"book_id": book_id, "number": int(number)})
+    return doc["content_markdown"] if doc else None
 
 
 def chapter_title_from_index(
     workspace_root: Path, book_id: str, *, number: int
 ) -> str | None:
-    for item in _load_chapter_index(workspace_root, book_id):
-        if int(item.get("number", -1)) == int(number):
-            return str(item.get("title") or "") or None
-    return None
+    col = get_collection("chapters")
+    doc = col.find_one({"book_id": book_id, "number": int(number)}, {"title": 1})
+    return doc["title"] if doc else None
 
 
 def save_chapter(
@@ -162,23 +152,25 @@ def save_chapter(
     number: int,
     title: str,
     content_markdown: str,
-) -> Path:
-    ensure_book_dirs(workspace_root, book_id)
-    chapter_path = book_chapters_dir(workspace_root, book_id) / f"{number:04d}.md"
-    chapter_path.write_text(content_markdown, encoding="utf-8")
-
-    items = _load_chapter_index(workspace_root, book_id)
+) -> Any:
+    col = get_collection("chapters")
     now = _now_iso()
-    items = [i for i in items if int(i.get("number", -1)) != int(number)]
-    items.append({"number": int(number), "title": title, "updated_at": now})
-    items.sort(key=lambda x: int(x.get("number", 0)))
-    _save_chapter_index(workspace_root, book_id, items)
-    return chapter_path
+    col.replace_one(
+        {"book_id": book_id, "number": int(number)},
+        {
+            "book_id": book_id,
+            "number": int(number),
+            "title": title,
+            "content_markdown": content_markdown,
+            "updated_at": now
+        },
+        upsert=True
+    )
+    return True
 
 
 def append_chat_log(workspace_root: Path, book_id: str, record: dict[str, Any]) -> None:
-    ensure_book_dirs(workspace_root, book_id)
-    path = book_chat_log_file(workspace_root, book_id)
-    line = json.dumps(record, ensure_ascii=False)
-    with path.open("a", encoding="utf-8") as f:
-        f.write(line + "\n")
+    col = get_collection("chat_logs")
+    record["book_id"] = book_id
+    record["timestamp"] = _now_iso()
+    col.insert_one(record)

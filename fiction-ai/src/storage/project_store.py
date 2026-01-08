@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from .paths import books_dir, project_file, project_root_dir
+from .mongodb import get_collection
 
 
 def _now_iso() -> str:
@@ -43,12 +43,11 @@ class ProjectState:
 
 
 def ensure_project(workspace_root: Path) -> ProjectState:
-    project_root = project_root_dir(workspace_root)
-    project_root.mkdir(parents=True, exist_ok=True)
-    books_dir(workspace_root).mkdir(parents=True, exist_ok=True)
-
-    path = project_file(workspace_root)
-    if path.exists():
+    # We ignore workspace_root for MongoDB as requested
+    col = get_collection("project")
+    doc = col.find_one({})
+    
+    if doc:
         return load_project(workspace_root)
 
     state = ProjectState(
@@ -63,7 +62,11 @@ def ensure_project(workspace_root: Path) -> ProjectState:
 
 
 def load_project(workspace_root: Path) -> ProjectState:
-    data = json.loads(project_file(workspace_root).read_text(encoding="utf-8"))
+    col = get_collection("project")
+    data = col.find_one({})
+    if not data:
+        return ensure_project(workspace_root)
+    
     books = [BookRef(**b) for b in data.get("books", [])]
     return ProjectState(
         schema_version=int(data.get("schema_version", 1)),
@@ -75,6 +78,7 @@ def load_project(workspace_root: Path) -> ProjectState:
 
 
 def save_project(workspace_root: Path, state: ProjectState) -> None:
+    col = get_collection("project")
     payload: dict[str, Any] = {
         "schema_version": state.schema_version,
         "project_id": state.project_id,
@@ -92,9 +96,7 @@ def save_project(workspace_root: Path, state: ProjectState) -> None:
             for b in state.books
         ],
     }
-    project_file(workspace_root).write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    col.replace_one({"project_id": state.project_id}, payload, upsert=True)
 
 
 def create_book(workspace_root: Path, state: ProjectState, *, title: str) -> BookRef:

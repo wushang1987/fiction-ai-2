@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-from .paths import snippets_db_file, snippets_dir, snippets_jsonl_file
+from .mongodb import get_collection
 
 
 def _now_iso() -> str:
@@ -28,8 +28,11 @@ class Snippet:
 
 
 def ensure_snippet_store(workspace_root: Path) -> None:
-    snippets_dir(workspace_root).mkdir(parents=True, exist_ok=True)
-    _ensure_db(workspace_root)
+    # Ensure text index for search
+    col = get_collection("snippets")
+    # For MongoDB 4.2+, non-atlas doesn't have great CJK without specific configuration,
+    # but we can at least index the fields.
+    col.create_index([("title", "text"), ("text", "text"), ("tags", "text")])
 
 
 def add_snippet(
@@ -42,8 +45,6 @@ def add_snippet(
     source: str = "user",
     url: str | None = None,
 ) -> Snippet:
-    ensure_snippet_store(workspace_root)
-
     snippet = Snippet(
         snippet_id=str(uuid.uuid4()),
         book_id=book_id,
@@ -55,11 +56,8 @@ def add_snippet(
         url=url,
     )
 
-    jsonl_path = snippets_jsonl_file(workspace_root)
-    with jsonl_path.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(_snippet_to_record(snippet), ensure_ascii=False) + "\n")
-
-    _insert_snippet_db(workspace_root, snippet)
+    col = get_collection("snippets")
+    col.insert_one(_snippet_to_record(snippet))
     return snippet
 
 
@@ -70,223 +68,53 @@ def search_snippets(
     book_id: str | None,
     limit: int = 5,
 ) -> list[Snippet]:
-    ensure_snippet_store(workspace_root)
     query = query.strip()
     if not query:
         return []
 
-    # SQLite FTS tokenization is often unfriendly to CJK substring queries.
-    # Strategy:
-    # - For CJK-heavy queries: prefer LIKE first (substring match).
-    # - Otherwise: try FTS first (better ranking), then fallback to LIKE if empty.
-    prefer_like = _looks_like_cjk(query)
-
-    primary: list[Snippet] = []
-    secondary: list[Snippet] = []
-
-    if prefer_like:
-        primary = _search_db_like(workspace_root, query=query, book_id=book_id, limit=limit)
-        try:
-            secondary = _search_db_fts(workspace_root, query=query, book_id=book_id, limit=limit)
-        except sqlite3.OperationalError:
-            secondary = []
-    else:
-        try:
-            primary = _search_db_fts(workspace_root, query=query, book_id=book_id, limit=limit)
-        except sqlite3.OperationalError:
-            primary = []
-        if not primary:
-            secondary = _search_db_like(workspace_root, query=query, book_id=book_id, limit=limit)
-
-    merged = _merge_unique(primary, secondary)
-    return merged[: int(limit)]
-
-
-def _looks_like_cjk(text: str) -> bool:
-    # Basic CJK unified ideographs block.
-    for ch in text:
-        if "\u4e00" <= ch <= "\u9fff":
-            return True
-    return False
-
-
-def _merge_unique(a: list[Snippet], b: list[Snippet]) -> list[Snippet]:
-    seen: set[str] = set()
-    out: list[Snippet] = []
-    for item in a + b:
-        if item.snippet_id in seen:
-            continue
-        seen.add(item.snippet_id)
-        out.append(item)
-    return out
-
-
-def _ensure_db(workspace_root: Path) -> None:
-    db_path = snippets_db_file(workspace_root)
-    conn = sqlite3.connect(db_path)
-    try:
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS snippets (
-                snippet_id TEXT PRIMARY KEY,
-                book_id TEXT,
-                created_at TEXT NOT NULL,
-                title TEXT NOT NULL,
-                text TEXT NOT NULL,
-                tags_json TEXT NOT NULL,
-                source TEXT NOT NULL,
-                url TEXT
-            )
-            """
-        )
-
-        # Prefer FTS5. If not compiled, this will error and we fallback at query time.
-        conn.execute(
-            """
-            CREATE VIRTUAL TABLE IF NOT EXISTS snippets_fts
-            USING fts5(snippet_id, title, text, tags, book_id, created_at, source, url)
-            """
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def _insert_snippet_db(workspace_root: Path, snippet: Snippet) -> None:
-    db_path = snippets_db_file(workspace_root)
-    conn = sqlite3.connect(db_path)
-    try:
-        conn.execute(
-            """
-            INSERT OR REPLACE INTO snippets
-            (snippet_id, book_id, created_at, title, text, tags_json, source, url)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                snippet.snippet_id,
-                snippet.book_id,
-                snippet.created_at,
-                snippet.title,
-                snippet.text,
-                json.dumps(snippet.tags, ensure_ascii=False),
-                snippet.source,
-                snippet.url,
-            ),
-        )
-
-        try:
-            conn.execute(
-                """
-                INSERT OR REPLACE INTO snippets_fts
-                (snippet_id, title, text, tags, book_id, created_at, source, url)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    snippet.snippet_id,
-                    snippet.title,
-                    snippet.text,
-                    " ".join(snippet.tags),
-                    snippet.book_id or "",
-                    snippet.created_at,
-                    snippet.source,
-                    snippet.url or "",
-                ),
-            )
-        except sqlite3.OperationalError:
-            # No FTS available.
-            pass
-
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def _search_db_fts(
-    workspace_root: Path,
-    *,
-    query: str,
-    book_id: str | None,
-    limit: int,
-) -> list[Snippet]:
-    db_path = snippets_db_file(workspace_root)
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    try:
-        # Search both active book and global (book_id = ''). We store null as '' in FTS.
-        book_scope = "" if book_id is None else book_id
-        rows = conn.execute(
-            """
-            SELECT snippet_id, book_id, created_at, title, text, tags, source, url
-            FROM snippets_fts
-            WHERE snippets_fts MATCH ?
-              AND (book_id = ? OR book_id = '')
-            ORDER BY bm25(snippets_fts)
-            LIMIT ?
-            """,
-            (query, book_scope, int(limit)),
-        ).fetchall()
-        return [
-            Snippet(
-                snippet_id=str(r["snippet_id"]),
-                book_id=str(r["book_id"]) or None,
-                created_at=str(r["created_at"]),
-                title=str(r["title"]),
-                text=str(r["text"]),
-                tags=[t for t in str(r["tags"]).split() if t],
-                source=str(r["source"]),
-                url=str(r["url"]) or None,
-            )
-            for r in rows
+    col = get_collection("snippets")
+    
+    # Simple regex search for local robustness with CJK
+    import re
+    regex_query = re.compile(re.escape(query), re.IGNORECASE)
+    
+    filter_dict: dict[str, Any] = {
+        "$or": [
+            {"title": regex_query},
+            {"text": regex_query},
+            {"tags": regex_query}
         ]
-    finally:
-        conn.close()
+    }
+    
+    if book_id:
+        filter_dict["$or"] = [
+            {"book_id": book_id},
+            {"book_id": None},
+            {"book_id": ""}
+        ]
+        # We need to combine the search query with the book filter
+        filter_dict = {
+            "$and": [
+                {"$or": [{"book_id": book_id}, {"book_id": None}, {"book_id": ""}]},
+                {"$or": [{"title": regex_query}, {"text": regex_query}, {"tags": regex_query}]}
+            ]
+        }
 
-
-def _search_db_like(
-    workspace_root: Path,
-    *,
-    query: str,
-    book_id: str | None,
-    limit: int,
-) -> list[Snippet]:
-    db_path = snippets_db_file(workspace_root)
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    try:
-        like = f"%{query}%"
-        rows = conn.execute(
-            """
-            SELECT snippet_id, book_id, created_at, title, text, tags_json, source, url
-            FROM snippets
-            WHERE (book_id = ? OR book_id IS NULL)
-              AND (title LIKE ? OR text LIKE ? OR tags_json LIKE ?)
-            ORDER BY created_at DESC
-            LIMIT ?
-            """,
-            (book_id, like, like, like, int(limit)),
-        ).fetchall()
-
-        out: list[Snippet] = []
-        for r in rows:
-            try:
-                tags = json.loads(r["tags_json"])
-            except Exception:
-                tags = []
-            out.append(
-                Snippet(
-                    snippet_id=str(r["snippet_id"]),
-                    book_id=str(r["book_id"]) if r["book_id"] is not None else None,
-                    created_at=str(r["created_at"]),
-                    title=str(r["title"]),
-                    text=str(r["text"]),
-                    tags=list(tags) if isinstance(tags, list) else [],
-                    source=str(r["source"]),
-                    url=str(r["url"]) if r["url"] is not None else None,
-                )
-            )
-        return out
-    finally:
-        conn.close()
+    docs = col.find(filter_dict).sort("created_at", -1).limit(int(limit))
+    
+    return [
+        Snippet(
+            snippet_id=str(d["snippet_id"]),
+            book_id=d.get("book_id"),
+            created_at=str(d["created_at"]),
+            title=str(d["title"]),
+            text=str(d["text"]),
+            tags=list(d.get("tags", [])),
+            source=str(d.get("source", "user")),
+            url=d.get("url")
+        )
+        for d in docs
+    ]
 
 
 def _snippet_to_record(snippet: Snippet) -> dict[str, Any]:

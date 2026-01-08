@@ -147,6 +147,28 @@ def find_books(state: ProjectState, query: str) -> list[BookRef]:
     return hits
 
 
+def update_book_title(workspace_root: Path, state: ProjectState, book_id: str, new_title: str) -> bool:
+    for b in state.books:
+        if b.book_id == book_id:
+            b.title = new_title.strip() or "Untitled"
+            b.slug = _slugify(b.title)
+            b.updated_at = _now_iso()
+            save_project(workspace_root, state)
+            return True
+    return False
+
+
+def delete_book(workspace_root: Path, state: ProjectState, book_id: str) -> bool:
+    prev_len = len(state.books)
+    state.books = [b for b in state.books if b.book_id != book_id]
+    if len(state.books) < prev_len:
+        if state.active_book_id == book_id:
+            state.active_book_id = state.books[0].book_id if state.books else None
+        save_project(workspace_root, state)
+        return True
+    return False
+
+
 def list_books_text(state: ProjectState) -> str:
     if not state.books:
         return "当前还没有任何小说。你可以说：‘写一个3000字的校园爱情小说’ 来创建第一本。"

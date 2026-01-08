@@ -161,6 +161,10 @@ class SetActiveBookRequest(BaseModel):
     book_id: str
 
 
+class UpdateBookRequest(BaseModel):
+    title: str | None = None
+
+
 class GenerateOutlineRequest(BaseModel):
     instruction: str | None = None
 
@@ -486,6 +490,49 @@ def api_toggle_book_public(book_id: str, req: TogglePublicRequest, user_id: str 
     book_store.save_book(workspace_root, bs)
     
     return _ok({"book_id": book_id, "is_public": book_ref.is_public})
+
+
+@app.patch("/api/books/{book_id}")
+def api_update_book(book_id: str, req: UpdateBookRequest, user_id: str = Depends(get_current_user_id)) -> JSONResponse:
+    workspace_root = _workspace_root()
+    project = project_store.ensure_project(workspace_root)
+    book_ref = next((b for b in project.books if b.book_id == book_id), None)
+    
+    if not book_ref:
+        return _err(404, "BOOK_NOT_FOUND", "Book not found", {"book_id": book_id})
+
+    if book_ref.user_id != user_id:
+        return _err(403, "FORBIDDEN", "Only the owner can update this book")
+
+    if req.title is not None:
+        project_store.update_book_title(workspace_root, project, book_id, req.title)
+        # Also update BookState
+        bs = book_store.load_book(workspace_root, book_id)
+        bs.title = req.title.strip() or "Untitled"
+        bs.updated_at = datetime.now(timezone.utc).isoformat()
+        book_store.save_book(workspace_root, bs)
+    
+    return _ok({"book_id": book_id, "title": req.title})
+
+
+@app.delete("/api/books/{book_id}")
+def api_delete_book(book_id: str, user_id: str = Depends(get_current_user_id)) -> JSONResponse:
+    workspace_root = _workspace_root()
+    project = project_store.ensure_project(workspace_root)
+    book_ref = next((b for b in project.books if b.book_id == book_id), None)
+    
+    if not book_ref:
+        return _err(404, "BOOK_NOT_FOUND", "Book not found", {"book_id": book_id})
+
+    if book_ref.user_id != user_id:
+        return _err(403, "FORBIDDEN", "Only the owner can delete this book")
+
+    # 1. Remove from project_store metadata
+    project_store.delete_book(workspace_root, project, book_id)
+    # 2. Cleanup all associated data
+    book_store.delete_book_all_data(workspace_root, book_id)
+    
+    return _ok({"book_id": book_id, "message": "Book deleted successfully"})
 
 
 @app.get("/api/books/{book_id}/outline")

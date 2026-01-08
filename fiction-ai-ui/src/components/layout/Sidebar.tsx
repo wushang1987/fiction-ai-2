@@ -50,7 +50,7 @@ export function Sidebar({ activeTab, onTabChange, statusText }: SidebarProps) {
                     <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Workspace</span>
                 </div>
                 <NavItem value="home" icon={Sparkles} label="Home" />
-                <NavItem value="dashboard" icon={BookOpen} label="Library" />
+                <NavItem value="dashboard" icon={BookOpen} label="My Library" />
 
                 <div className="px-3 mb-2 mt-6">
                     <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Resources</span>

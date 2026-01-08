@@ -25,6 +25,8 @@ import { useAuth } from "./contexts/AuthContext";
 
 import { Toaster } from "sonner";
 
+import { Check, Globe, Lock, Pencil, X } from "lucide-react";
+
 type LoadState = "idle" | "loading" | "error";
 type View = "dashboard" | "snippets" | "home";
 
@@ -59,6 +61,9 @@ function MainEditor() {
 
   const [snippetState, setSnippetState] = useState<LoadState>("idle");
   const [snippetResults, setSnippetResults] = useState<Snippet[]>([]);
+
+  const [headerEditing, setHeaderEditing] = useState(false);
+  const [headerTitle, setHeaderTitle] = useState("");
 
   // --- Theme ---
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -289,9 +294,27 @@ function MainEditor() {
     } catch (e) { }
   }
 
+  async function updateBookTitle(book_id: string, title: string) {
+    try {
+      await fictionApi.updateBook(book_id, { title });
+      await refreshBooks();
+    } catch (e) { }
+  }
+
+  async function deleteBook(book_id: string) {
+    if (!window.confirm("Are you sure you want to delete this book? This action cannot be undone.")) return;
+    try {
+      await fictionApi.deleteBook(book_id);
+      if (bookId === book_id) {
+        navigate("/dashboard");
+      }
+      await refreshBooks();
+    } catch (e) { }
+  }
+
   const viewTitles = {
     home: "Discover",
-    dashboard: "Library",
+    dashboard: "My Library",
     snippets: "Text Snippets"
   };
 
@@ -313,7 +336,65 @@ function MainEditor() {
             <h1 className="text-3xl font-bold text-foreground">
               {activeView === "dashboard" && bookId ? (
                 <div className="flex items-center gap-4">
-                  <span>{books.find(b => b.book_id === bookId)?.title || "Book Detail"}</span>
+                  <div className="flex items-center gap-2">
+                    {headerEditing ? (
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={headerTitle}
+                          onChange={(e) => setHeaderTitle(e.target.value)}
+                          className="bg-background border border-border rounded px-2 py-1 text-2xl font-bold focus:outline-none focus:ring-2 focus:ring-primary/50"
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              updateBookTitle(bookId, headerTitle);
+                              setHeaderEditing(false);
+                            }
+                            if (e.key === "Escape") setHeaderEditing(false);
+                          }}
+                        />
+                        <Button size="icon" variant="ghost" onClick={() => { updateBookTitle(bookId, headerTitle); setHeaderEditing(false); }}>
+                          <Check className="h-5 w-5 text-emerald-500" />
+                        </Button>
+                        <Button size="icon" variant="ghost" onClick={() => setHeaderEditing(false)}>
+                          <X className="h-5 w-5 text-destructive" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 group/header">
+                        <span>{books.find(b => b.book_id === bookId)?.title || "Book Detail"}</span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 opacity-0 group-hover/header:opacity-100 transition-opacity"
+                          onClick={() => {
+                            const b = books.find(bx => bx.book_id === bookId);
+                            if (b) {
+                              setHeaderTitle(b.title);
+                              setHeaderEditing(true);
+                            }
+                          }}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-muted-foreground hover:text-foreground ml-2"
+                          onClick={() => {
+                            const b = books.find(bx => bx.book_id === bookId);
+                            if (b) togglePublic(bookId, !b.is_public);
+                          }}
+                        >
+                          {books.find(b => b.book_id === bookId)?.is_public ? (
+                            <Globe className="h-4 w-4 text-emerald-500" />
+                          ) : (
+                            <Lock className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
                   <div className="flex bg-muted rounded-lg p-1">
                     <button
                       onClick={() => navigate(`/books/${bookId}/outline`)}
@@ -347,7 +428,15 @@ function MainEditor() {
             <div className="space-y-12">
               <div className="space-y-4">
                 <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest">Active Books</h3>
-                <BookList books={books} activeBookId={bookId ?? null} onSetActive={setActive} onTogglePublic={togglePublic} isLoading={booksState === "loading"} />
+                <BookList
+                  books={books}
+                  activeBookId={bookId ?? null}
+                  onSetActive={setActive}
+                  onTogglePublic={togglePublic}
+                  onUpdateTitle={updateBookTitle}
+                  onDelete={deleteBook}
+                  isLoading={booksState === "loading"}
+                />
               </div>
               <div className="space-y-4">
                 <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest">Start New Project</h3>

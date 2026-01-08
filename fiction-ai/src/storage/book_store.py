@@ -179,8 +179,18 @@ def save_chapter(
     return True
 
 
-def append_chat_log(workspace_root: Path, book_id: str, record: dict[str, Any]) -> None:
-    col = get_collection("chat_logs")
-    record["book_id"] = book_id
-    record["timestamp"] = _now_iso()
     col.insert_one(record)
+
+
+def delete_book_all_data(workspace_root: Path, book_id: str) -> None:
+    # Remove from books collection
+    get_collection("books").delete_one({"book_id": book_id})
+    # Remove from outlines collection
+    get_collection("outlines").delete_one({"book_id": book_id})
+    # Remove from chapters collection
+    get_collection("chapters").delete_many({"book_id": book_id})
+    # Remove from chat_logs
+    get_collection("chat_logs").delete_many({"book_id": book_id})
+    # Snippets associated with the book could be kept or removed;
+    # Usually better to remove them if they are book-specific.
+    get_collection("snippets").delete_many({"book_id": book_id})

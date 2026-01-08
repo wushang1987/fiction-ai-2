@@ -97,6 +97,10 @@ export type CreateBookRequest = {
     set_active?: boolean
 }
 
+export type UpdateBookRequest = {
+    title?: string
+}
+
 export type CreateBookData = {
     book: Book
     active_book_id: string | null

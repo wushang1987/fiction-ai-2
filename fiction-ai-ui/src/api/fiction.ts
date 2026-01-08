@@ -11,6 +11,7 @@ import type {
     GenerateAllChaptersRequest,
     GenerateOutlineData,
     GenerateOutlineRequest,
+    UpdateBookRequest,
     GetBookData,
     GetChapterData,
     GetOutlineData,
@@ -40,6 +41,17 @@ export const fictionApi = {
         }),
 
     getBook: (book_id: string) => apiFetch<GetBookData>(`/api/books/${book_id}`),
+
+    updateBook: (book_id: string, req: UpdateBookRequest) =>
+        apiFetch<{ book_id: string; title: string }>(`/api/books/${book_id}`, {
+            method: 'PATCH',
+            body: JSON.stringify(req),
+        }),
+
+    deleteBook: (book_id: string) =>
+        apiFetch<{ book_id: string; message: string }>(`/api/books/${book_id}`, {
+            method: 'DELETE',
+        }),
 
     getOutline: (book_id: string) => apiFetch<GetOutlineData>(`/api/books/${book_id}/outline`),
     generateOutline: (book_id: string, req?: GenerateOutlineRequest) =>

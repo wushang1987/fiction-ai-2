@@ -403,6 +403,13 @@ function MainEditor() {
     } catch (e) { }
   }
 
+  async function updateBookPremise(book_id: string, premise: string) {
+    try {
+      await fictionApi.updateBook(book_id, { premise });
+      await refreshBooks();
+    } catch (e) { }
+  }
+
   async function deleteBook(book_id: string) {
     if (!window.confirm("Are you sure you want to delete this book? This action cannot be undone.")) return;
     try {
@@ -549,6 +556,7 @@ function MainEditor() {
                   onSetActive={setActive}
                   onTogglePublic={togglePublic}
                   onUpdateTitle={updateBookTitle}
+                  onUpdatePremise={updateBookPremise}
                   onDelete={deleteBook}
                   isLoading={booksState === "loading"}
                 />

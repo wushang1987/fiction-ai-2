@@ -43,7 +43,7 @@ export const fictionApi = {
     getBook: (book_id: string) => apiFetch<GetBookData>(`/api/books/${book_id}`),
 
     updateBook: (book_id: string, req: UpdateBookRequest) =>
-        apiFetch<{ book_id: string; title: string }>(`/api/books/${book_id}`, {
+        apiFetch<{ book_id: string; title?: string; premise?: string }>(`/api/books/${book_id}`, {
             method: 'PATCH',
             body: JSON.stringify(req),
         }),

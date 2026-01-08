@@ -36,6 +36,9 @@ export type BookRef = {
     updated_at: string
     is_public: boolean
     user_id: string | null
+    chapters_count: number
+    planned_chapters_count: number | null
+    premise: string
 }
 
 export type Book = {
@@ -50,6 +53,7 @@ export type Book = {
     updated_at: string
     outline_exists: boolean
     chapters_count: number
+    planned_chapters_count: number | null
     is_public: boolean
     user_id: string | null
 }
@@ -99,6 +103,7 @@ export type CreateBookRequest = {
 
 export type UpdateBookRequest = {
     title?: string
+    premise?: string
 }
 
 export type CreateBookData = {

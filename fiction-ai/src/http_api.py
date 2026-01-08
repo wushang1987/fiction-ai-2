@@ -142,8 +142,10 @@ def _planned_last_chapter_number(outline_markdown: str) -> int | None:
 def _book_payload(workspace_root: Path, book_id: str) -> dict[str, Any]:
     bs = book_store.load_book(workspace_root, book_id)
     payload = asdict(bs)
-    payload["outline_exists"] = _outline_exists(workspace_root, book_id)
+    outline = book_store.load_outline(workspace_root, book_id)
+    payload["outline_exists"] = outline is not None
     payload["chapters_count"] = _chapter_count(workspace_root, book_id)
+    payload["planned_chapters_count"] = _planned_last_chapter_number(outline) if outline else None
     return payload
 
 
@@ -163,6 +165,7 @@ class SetActiveBookRequest(BaseModel):
 
 class UpdateBookRequest(BaseModel):
     title: str | None = None
+    premise: str | None = None
 
 
 class GenerateOutlineRequest(BaseModel):
@@ -345,7 +348,15 @@ def api_list_books(user_id: str | None = Depends(get_optional_user_id)) -> JSONR
     return _ok(
         {
             "active_book_id": project.active_book_id,
-            "books": [asdict(b) for b in user_books],
+            "books": [
+                {
+                    **asdict(b),
+                    "chapters_count": _chapter_count(workspace_root, b.book_id),
+                    "planned_chapters_count": _planned_last_chapter_number(book_store.load_outline(workspace_root, b.book_id)) if book_store.load_outline(workspace_root, b.book_id) else None,
+                    "premise": book_store.load_book(workspace_root, b.book_id).premise if _book_exists(workspace_root, b.book_id) else ""
+                }
+                for b in user_books
+            ],
         }
     )
 
@@ -580,7 +591,13 @@ def api_update_book(book_id: str, req: UpdateBookRequest, user_id: str = Depends
         bs.updated_at = datetime.now(timezone.utc).isoformat()
         book_store.save_book(workspace_root, bs)
     
-    return _ok({"book_id": book_id, "title": req.title})
+    if req.premise is not None:
+        bs = book_store.load_book(workspace_root, book_id)
+        bs.premise = req.premise.strip()
+        bs.updated_at = datetime.now(timezone.utc).isoformat()
+        book_store.save_book(workspace_root, bs)
+    
+    return _ok({"book_id": book_id, "title": req.title, "premise": req.premise})
 
 
 @app.delete("/api/books/{book_id}")

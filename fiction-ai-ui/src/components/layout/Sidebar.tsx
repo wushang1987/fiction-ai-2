@@ -1,12 +1,12 @@
-import { BookOpen, PenTool, LayoutTemplate, Sparkles, FileText, UserCircle, LogOut } from "lucide-react";
+import { BookOpen, Sparkles, FileText, UserCircle, LogOut } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
 import { useAuth } from "../../contexts/AuthContext";
 
 interface SidebarProps {
-    activeTab: "dashboard" | "write" | "outline" | "snippets" | "home";
-    onTabChange: (tab: "dashboard" | "write" | "outline" | "snippets" | "home") => void;
+    activeTab: "dashboard" | "snippets" | "home";
+    onTabChange: (tab: "dashboard" | "snippets" | "home") => void;
     statusText?: string;
 }
 
@@ -19,7 +19,7 @@ export function Sidebar({ activeTab, onTabChange, statusText }: SidebarProps) {
         icon: Icon,
         label
     }: {
-        value: "dashboard" | "write" | "outline" | "snippets" | "home",
+        value: "dashboard" | "snippets" | "home",
         icon: React.ElementType,
         label: string
     }) => (
@@ -51,8 +51,6 @@ export function Sidebar({ activeTab, onTabChange, statusText }: SidebarProps) {
                 </div>
                 <NavItem value="home" icon={Sparkles} label="Home" />
                 <NavItem value="dashboard" icon={BookOpen} label="Library" />
-                <NavItem value="outline" icon={LayoutTemplate} label="Outline" />
-                <NavItem value="write" icon={PenTool} label="Writer" />
 
                 <div className="px-3 mb-2 mt-6">
                     <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Resources</span>

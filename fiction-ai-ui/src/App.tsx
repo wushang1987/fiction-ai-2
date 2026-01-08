@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { Routes, Route, Navigate, useParams, useNavigate } from "react-router-dom";
+import { Routes, Route, Navigate, useParams, useNavigate, useLocation } from "react-router-dom";
 import { fictionApi } from "./api/fiction";
+import { cn } from "./lib/utils";
+import { Button } from "./components/ui/button";
 import type { BookRef, ChapterRef, Snippet } from "./types";
 
 // Components
@@ -24,18 +26,22 @@ import { useAuth } from "./contexts/AuthContext";
 import { Toaster } from "sonner";
 
 type LoadState = "idle" | "loading" | "error";
-type View = "dashboard" | "write" | "outline" | "snippets" | "home";
+type View = "dashboard" | "snippets" | "home";
 
 function MainEditor() {
   const { user } = useAuth();
   const { bookId } = useParams();
   const navigate = useNavigate();
-  const [activeView, setActiveView] = useState<View>("dashboard");
+  const location = useLocation();
+
+  // Derive view and tab from URL
+  const activeView: View = location.pathname.startsWith("/snippets") ? "snippets" : "dashboard";
+  const activeBookTab: "outline" | "write" = location.pathname.endsWith("/write") ? "write" : "outline";
+
   const [statusText, setStatusText] = useState<string>("");
 
   const [booksState, setBooksState] = useState<LoadState>("idle");
   const [books, setBooks] = useState<BookRef[]>([]);
-  const [activeBookId, setActiveBookId] = useState<string | null>(null);
 
   const [outlineState, setOutlineState] = useState<LoadState>("idle");
   const [outlineMarkdown, setOutlineMarkdown] = useState<string | null>(null);
@@ -90,13 +96,8 @@ function MainEditor() {
       const data = await fictionApi.listBooks();
       setBooks(data.books);
 
-      // If we have a bookId in URL, prioritize it. 
-      // Otherwise use the active_book_id from server.
-      if (bookId) {
-        setActiveBookId(bookId);
-      } else {
-        setActiveBookId(data.active_book_id);
-      }
+      // In URL-driven mode, we don't need to manually track activeBookId
+      // because it's derived from useParams()
       setBooksState("idle");
     } catch (e) {
       setBooksState("error");
@@ -105,10 +106,9 @@ function MainEditor() {
 
   async function setActive(book_id: string) {
     try {
-      const data = await fictionApi.setActiveBook({ book_id });
-      setActiveBookId(data.active_book_id);
-      // Navigate to the book view
-      navigate(`/books/${book_id}`);
+      await fictionApi.setActiveBook({ book_id });
+      // Navigate to the book outline view
+      navigate(`/books/${book_id}/outline`);
     } catch (e) { }
   }
 
@@ -123,20 +123,19 @@ function MainEditor() {
         generate_outline: true,
         set_active: true
       });
-      setActiveBookId(res.active_book_id);
       setOutlineMarkdown(res.outline?.outline_markdown ?? null);
       await refreshBooks();
-      setActiveView("outline");
+      navigate(`/books/${res.active_book_id}/outline`);
     } catch (e) {
       setBooksState("idle");
     }
   }
 
   async function refreshOutline() {
-    if (!activeBookId) return;
+    if (!bookId) return;
     setOutlineState("loading");
     try {
-      const data = await fictionApi.getOutline(activeBookId);
+      const data = await fictionApi.getOutline(bookId);
       setOutlineMarkdown(data.outline_markdown);
       setOutlineState("idle");
     } catch (e) {
@@ -145,10 +144,10 @@ function MainEditor() {
   }
 
   async function generateOutline() {
-    if (!activeBookId) return;
+    if (!bookId) return;
     setOutlineState("loading");
     try {
-      const data = await fictionApi.generateOutline(activeBookId);
+      const data = await fictionApi.generateOutline(bookId);
       setOutlineMarkdown(data.outline_markdown);
       setOutlineState("idle");
     } catch (e) {
@@ -157,10 +156,10 @@ function MainEditor() {
   }
 
   async function refreshChapters() {
-    if (!activeBookId) return;
+    if (!bookId) return;
     setChaptersState("loading");
     try {
-      const data = await fictionApi.listChapters(activeBookId);
+      const data = await fictionApi.listChapters(bookId);
       setChapters(data.chapters);
       setChaptersState("idle");
     } catch (e) {
@@ -169,19 +168,19 @@ function MainEditor() {
   }
 
   async function openChapter(ch: ChapterRef) {
-    if (!activeBookId) return;
+    if (!bookId) return;
     try {
-      const data = await fictionApi.getChapter(activeBookId, ch.number);
+      const data = await fictionApi.getChapter(bookId, ch.number);
       setSelectedChapter({ number: data.number, title: data.title });
       setChapterMarkdown(data.content_markdown);
     } catch (e) { }
   }
 
   async function generateChapter(mode: "next" | "number", specificNum?: number) {
-    if (!activeBookId) return;
+    if (!bookId) return;
     setChaptersState("loading");
     try {
-      const data = await fictionApi.generateChapter(activeBookId, {
+      const data = await fictionApi.generateChapter(bookId, {
         number: mode === "number" ? specificNum : undefined,
         instruction: chapterInstruction.trim() || undefined
       });
@@ -195,7 +194,7 @@ function MainEditor() {
   }
 
   async function generateAllChaptersStream() {
-    if (!activeBookId || streamingAll) return;
+    if (!bookId || streamingAll) return;
     setChaptersState("loading");
     setChapterMarkdown("");
     setSelectedChapter(null);
@@ -203,7 +202,7 @@ function MainEditor() {
     const usp = new URLSearchParams();
     const inst = chapterInstruction.trim();
     if (inst) usp.set("instruction", inst);
-    const url = `/api/books/${activeBookId}/chapters/all/stream?${usp.toString()}`;
+    const url = `/api/books/${bookId}/chapters/all/stream?${usp.toString()}`;
 
     pendingTextRef.current = "";
     if (!typingTimerRef.current) {
@@ -253,7 +252,7 @@ function MainEditor() {
   async function saveSnippet(text: string) {
     setSnippetState("loading");
     try {
-      await fictionApi.createSnippet({ text, book_id: activeBookId ?? undefined });
+      await fictionApi.createSnippet({ text, book_id: bookId ?? undefined });
       setSnippetState("idle");
     } catch (e) {
       setSnippetState("error");
@@ -277,11 +276,11 @@ function MainEditor() {
   }, [user]);
 
   useEffect(() => {
-    if (activeBookId) {
+    if (bookId) {
       refreshOutline();
       refreshChapters();
     }
-  }, [activeBookId]);
+  }, [bookId]);
 
   async function togglePublic(book_id: string, is_public: boolean) {
     try {
@@ -293,16 +292,14 @@ function MainEditor() {
   const viewTitles = {
     home: "Discover",
     dashboard: "Library",
-    outline: "Book Outline",
-    write: "Writer Room",
     snippets: "Text Snippets"
   };
 
-  const handleTabChange = (tab: View) => {
+  const handleTabChange = (tab: "dashboard" | "snippets" | "home") => {
     if (tab === "home") {
       navigate("/");
     } else {
-      setActiveView(tab);
+      navigate(`/${tab}`);
     }
   };
 
@@ -313,18 +310,44 @@ function MainEditor() {
       <div className="space-y-8 pb-20">
         <header className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-foreground">{viewTitles[activeView]}</h1>
+            <h1 className="text-3xl font-bold text-foreground">
+              {activeView === "dashboard" && bookId ? (
+                <div className="flex items-center gap-4">
+                  <span>{books.find(b => b.book_id === bookId)?.title || "Book Detail"}</span>
+                  <div className="flex bg-muted rounded-lg p-1">
+                    <button
+                      onClick={() => navigate(`/books/${bookId}/outline`)}
+                      className={cn(
+                        "px-4 py-1.5 text-sm font-medium rounded-md transition-all",
+                        activeBookTab === "outline" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      Outline
+                    </button>
+                    <button
+                      onClick={() => navigate(`/books/${bookId}/write`)}
+                      className={cn(
+                        "px-4 py-1.5 text-sm font-medium rounded-md transition-all",
+                        activeBookTab === "write" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      Writer
+                    </button>
+                  </div>
+                </div>
+              ) : viewTitles[activeView as keyof typeof viewTitles]}
+            </h1>
             <p className="text-muted-foreground mt-1">AI-Powered Novel Writing Assistant</p>
           </div>
           <ThemeToggle isDarkMode={isDarkMode} onToggle={toggleTheme} />
         </header>
 
         <section className="animate-in fade-in slide-in-from-bottom-2 duration-500">
-          {activeView === "dashboard" && (
+          {activeView === "dashboard" && !bookId && (
             <div className="space-y-12">
               <div className="space-y-4">
                 <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest">Active Books</h3>
-                <BookList books={books} activeBookId={activeBookId} onSetActive={setActive} onTogglePublic={togglePublic} isLoading={booksState === "loading"} />
+                <BookList books={books} activeBookId={bookId ?? null} onSetActive={setActive} onTogglePublic={togglePublic} isLoading={booksState === "loading"} />
               </div>
               <div className="space-y-4">
                 <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest">Start New Project</h3>
@@ -333,35 +356,36 @@ function MainEditor() {
             </div>
           )}
 
-          {activeView === "outline" && (
-            <OutlineView markdown={outlineMarkdown} isLoading={outlineState === "loading"} onGenerate={generateOutline} onRefresh={refreshOutline} hasActiveBook={!!activeBookId} />
-          )}
-
-          {activeView === "write" && (
-            <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 h-[700px]">
-              <div className="lg:col-span-1 min-w-0">
-                <ChapterList chapters={chapters} activeChapterNumber={selectedChapter?.number ?? null} onSelect={openChapter} isLoading={chaptersState === "loading"} />
-              </div>
-              <div className="lg:col-span-3 min-w-0">
-                {activeBookId ? (
-                  <ChapterEditor
-                    chapterNumber={selectedChapter?.number ?? 0}
-                    title={selectedChapter?.title ?? ""}
-                    markdown={chapterMarkdown}
-                    isLoading={chaptersState === "loading"}
-                    isStreaming={streamingAll}
-                    instruction={chapterInstruction}
-                    onInstructionChange={setChapterInstruction}
-                    onGenerateNext={() => generateChapter("next")}
-                    onGenerateSpecific={(n) => generateChapter("number", n)}
-                    onGenerateAll={() => { }}
-                    onGenerateAllStream={generateAllChaptersStream}
-                  />
-                ) : (
-                  <div className="h-full flex items-center justify-center border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-2xl text-slate-400">
-                    Select a book from the Library to start writing.
+          {activeView === "dashboard" && bookId && (
+            <div className="space-y-8">
+              {activeBookTab === "outline" ? (
+                <OutlineView markdown={outlineMarkdown} isLoading={outlineState === "loading"} onGenerate={generateOutline} onRefresh={refreshOutline} hasActiveBook={!!bookId} />
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 h-[700px]">
+                  <div className="lg:col-span-1 min-w-0">
+                    <ChapterList chapters={chapters} activeChapterNumber={selectedChapter?.number ?? null} onSelect={openChapter} isLoading={chaptersState === "loading"} />
                   </div>
-                )}
+                  <div className="lg:col-span-3 min-w-0">
+                    <ChapterEditor
+                      chapterNumber={selectedChapter?.number ?? 0}
+                      title={selectedChapter?.title ?? ""}
+                      markdown={chapterMarkdown}
+                      isLoading={chaptersState === "loading"}
+                      isStreaming={streamingAll}
+                      instruction={chapterInstruction}
+                      onInstructionChange={setChapterInstruction}
+                      onGenerateNext={() => generateChapter("next")}
+                      onGenerateSpecific={(n) => generateChapter("number", n)}
+                      onGenerateAll={() => { }}
+                      onGenerateAllStream={generateAllChaptersStream}
+                    />
+                  </div>
+                </div>
+              )}
+              <div className="pt-8 border-t border-border">
+                <Button variant="ghost" onClick={() => navigate("/dashboard")} className="text-muted-foreground">
+                  ← Back to Library
+                </Button>
               </div>
             </div>
           )}

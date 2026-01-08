@@ -70,12 +70,12 @@ export function BookList({ books, activeBookId, onSetActive, onTogglePublic, isL
                                 variant={isActive ? "secondary" : "outline"}
                                 className="w-full h-10 font-medium"
                                 onClick={() => onSetActive(book.book_id)}
-                                disabled={isActive || isLoading}
+                                disabled={isLoading}
                             >
                                 {isActive ? (
-                                    <span className="flex items-center"><Check className="mr-2 h-4 w-4" /> Selected</span>
+                                    <span className="flex items-center"><Check className="mr-2 h-4 w-4" /> Editing</span>
                                 ) : (
-                                    "Select this Book"
+                                    "Edit Book"
                                 )}
                             </Button>
                         </CardFooter>

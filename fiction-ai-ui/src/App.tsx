@@ -120,20 +120,73 @@ function MainEditor() {
 
   async function createBook(data: { premise: string; genre: string; targetWords: string }) {
     setBooksState("loading");
+    setOutlineMarkdown("");
     try {
       const tw = data.targetWords.trim() ? Number(data.targetWords) : null;
-      const res = await fictionApi.createBook({
-        premise: data.premise,
-        genre: data.genre || undefined,
-        target_words: tw,
-        generate_outline: true,
-        set_active: true
+      const response = await fetch("/api/books/stream", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${localStorage.getItem("fiction_ai_token")}`
+        },
+        body: JSON.stringify({
+          premise: data.premise,
+          genre: data.genre || undefined,
+          target_words: tw,
+          generate_outline: true,
+          set_active: true
+        })
       });
-      setOutlineMarkdown(res.outline?.outline_markdown ?? null);
-      await refreshBooks();
-      navigate(`/books/${res.active_book_id}/outline`);
+
+      if (!response.ok) throw new Error("Stream request failed");
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      if (!reader) return;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (line.startsWith("event: ")) {
+            const splitIndex = line.indexOf("\ndata: ");
+            if (splitIndex === -1) continue;
+            const event = line.slice(7, splitIndex);
+            const dataStr = line.slice(splitIndex + 7);
+
+            try {
+              const payload = JSON.parse(dataStr);
+              if (event === "book_created") {
+                await refreshBooks();
+                navigate(`/books/${payload.active_book_id}/outline`);
+                setOutlineState("loading");
+              } else if (event === "outline_chunk") {
+                setOutlineMarkdown(prev => (prev || "") + payload.delta);
+                setOutlineState("idle");
+              } else if (event === "done") {
+                setBooksState("idle");
+                setOutlineState("idle");
+              } else if (event === "error") {
+                console.error("Stream error:", payload.message);
+                setBooksState("error");
+                setOutlineState("error");
+              }
+            } catch (e) {
+              console.error("Error parsing SSE data", e);
+            }
+          }
+        }
+      }
     } catch (e) {
-      setBooksState("idle");
+      console.error("Create book failed:", e);
+      setBooksState("error");
     }
   }
 
@@ -152,11 +205,59 @@ function MainEditor() {
   async function generateOutline() {
     if (!bookId) return;
     setOutlineState("loading");
+    setOutlineMarkdown("");
     try {
-      const data = await fictionApi.generateOutline(bookId);
-      setOutlineMarkdown(data.outline_markdown);
-      setOutlineState("idle");
+      const response = await fetch(`/api/books/${bookId}/outline/stream`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${localStorage.getItem("fiction_ai_token")}`
+        },
+        body: JSON.stringify({})
+      });
+
+      if (!response.ok) throw new Error("Stream request failed");
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      if (!reader) return;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (line.startsWith("event: ")) {
+            const splitIndex = line.indexOf("\ndata: ");
+            if (splitIndex === -1) continue;
+            const event = line.slice(7, splitIndex);
+            const dataStr = line.slice(splitIndex + 7);
+
+            try {
+              const payload = JSON.parse(dataStr);
+              if (event === "outline_chunk") {
+                setOutlineMarkdown(prev => (prev || "") + payload.delta);
+                setOutlineState("idle");
+              } else if (event === "done") {
+                setOutlineState("idle");
+              } else if (event === "error") {
+                console.error("Stream error:", payload.message);
+                setOutlineState("error");
+              }
+            } catch (e) {
+              console.error("Error parsing SSE data", e);
+            }
+          }
+        }
+      }
     } catch (e) {
+      console.error("Generate outline failed:", e);
       setOutlineState("error");
     }
   }

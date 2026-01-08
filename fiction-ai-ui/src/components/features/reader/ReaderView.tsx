@@ -3,7 +3,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Button } from "../../ui/button";
 import { ChevronLeft, ChevronRight, List } from "lucide-react";
-import { ChapterRef } from "../../../types";
+import type { ChapterRef } from "../../../types";
 import { cn } from "../../../lib/utils";
 
 interface ReaderViewProps {

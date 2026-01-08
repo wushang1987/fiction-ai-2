@@ -17,7 +17,7 @@ try:
     # When running as module: `uvicorn src.http_api:app`
     from .llm.client import build_llm, has_llm_config
     from .storage import book_store, project_store, snippet_store, user_store
-    from .writing.planner import OutlineRequest, make_outline_markdown
+    from .writing.planner import OutlineRequest, make_outline_markdown, stream_outline_markdown
     from .writing.writer import ChapterRequest, stream_chapter_markdown, write_chapter_markdown
     from .auth import (
         create_access_token,
@@ -31,7 +31,7 @@ except ImportError:  # pragma: no cover
     # When running with app-dir: `uvicorn http_api:app --app-dir src`
     from llm.client import build_llm, has_llm_config
     from storage import book_store, project_store, snippet_store, user_store
-    from writing.planner import OutlineRequest, make_outline_markdown
+    from writing.planner import OutlineRequest, make_outline_markdown, stream_outline_markdown
     from writing.writer import ChapterRequest, stream_chapter_markdown, write_chapter_markdown
     from auth import (
         create_access_token,
@@ -412,6 +412,74 @@ def api_create_book(req: CreateBookRequest, user_id: str = Depends(get_current_u
     )
 
 
+@app.post("/api/books/stream")
+def api_create_book_stream(req: CreateBookRequest, user_id: str = Depends(get_current_user_id)) -> StreamingResponse:
+    premise = (req.premise or "").strip()
+    if not premise:
+        raise ValueError("premise is required")
+
+    def generator():
+        llm_err = _require_llm()
+        if llm_err is not None:
+            # We can't return JSONResponse from a generator easily in a way SSE likes,
+            # so we yield an error event.
+            yield _sse("error", {"message": "LLM not configured"})
+            return
+
+        workspace_root = _workspace_root()
+        project = project_store.ensure_project(workspace_root)
+        prev_active = project.active_book_id
+
+        title = (req.title or "").strip() or _guess_title_from_premise(premise)
+        book_ref = project_store.create_book(workspace_root, project, title=title)
+        
+        # Store user_id in the book ref for filtering
+        book_ref.user_id = user_id
+        project_store.save_project(workspace_root, project)
+
+        if not req.set_active:
+            project_store.set_active_book(workspace_root, project, prev_active)
+
+        bs = book_store.create_book_state(
+            book_id=book_ref.book_id,
+            title=book_ref.title,
+            slug=book_ref.slug,
+            premise=premise,
+            genre=(req.genre or "").strip(),
+            target_words=req.target_words,
+            style_guide=(req.style_guide or "").strip(),
+            user_id=user_id,
+        )
+        book_store.save_book(workspace_root, bs)
+
+        # Notify frontend about the created book
+        yield _sse("book_created", {
+            "book": _book_payload(workspace_root, bs.book_id),
+            "active_book_id": bs.book_id,
+        })
+
+        full_outline = ""
+        if req.generate_outline:
+            llm = build_llm()
+            for chunk in stream_outline_markdown(
+                llm,
+                OutlineRequest(
+                    title=bs.title,
+                    premise=bs.premise,
+                    genre=bs.genre,
+                    target_words=bs.target_words,
+                ),
+            ):
+                full_outline += chunk
+                yield _sse("outline_chunk", {"delta": chunk})
+            
+            book_store.save_outline(workspace_root, bs.book_id, full_outline)
+
+        yield _sse("done", {})
+
+    return StreamingResponse(generator(), media_type="text/event-stream")
+
+
 @app.get("/api/books/active")
 def api_get_active_book(user_id: str | None = Depends(get_optional_user_id)) -> JSONResponse:
     workspace_root = _workspace_root()
@@ -584,6 +652,43 @@ def api_generate_outline(book_id: str, req: GenerateOutlineRequest | None = None
     book_store.save_outline(workspace_root, book_id, outline_markdown)
 
     return _ok({"book_id": book_id, "outline_markdown": outline_markdown})
+
+
+@app.post("/api/books/{book_id}/outline/stream")
+def api_generate_outline_stream(book_id: str, req: GenerateOutlineRequest | None = None, user_id: str = Depends(get_current_user_id)) -> StreamingResponse:
+    def generator():
+        llm_err = _require_llm()
+        if llm_err is not None:
+            yield _sse("error", {"message": "LLM not configured"})
+            return
+
+        workspace_root = _workspace_root()
+        if not _book_exists(workspace_root, book_id):
+            yield _sse("error", {"message": "Book not found"})
+            return
+
+        bs = book_store.load_book(workspace_root, book_id)
+        instruction = (req.instruction if req else None) or ""
+
+        llm = build_llm()
+        full_outline = ""
+        for chunk in stream_outline_markdown(
+            llm,
+            OutlineRequest(
+                title=bs.title,
+                premise=(bs.premise + ("\n\n" + instruction if instruction.strip() else "")),
+                genre=bs.genre,
+                target_words=bs.target_words,
+            ),
+        ):
+            full_outline += chunk
+            yield _sse("outline_chunk", {"delta": chunk})
+        
+        book_store.save_outline(workspace_root, book_id, full_outline)
+        yield _sse("done", {})
+
+    return StreamingResponse(generator(), media_type="text/event-stream")
+
 
 
 @app.get("/api/books/{book_id}/chapters")

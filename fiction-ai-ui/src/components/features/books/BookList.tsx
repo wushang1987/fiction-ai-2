@@ -16,9 +16,10 @@ interface BookListProps {
     onUpdateTitle?: (id: string, title: string) => void;
     onDelete?: (id: string) => void;
     isLoading: boolean;
+    buttonLabel?: string;
 }
 
-export function BookList({ books, activeBookId, onSetActive, onTogglePublic, onUpdateTitle, onDelete, isLoading }: BookListProps) {
+export function BookList({ books, activeBookId, onSetActive, onTogglePublic, onUpdateTitle, onDelete, isLoading, buttonLabel }: BookListProps) {
     const { user } = useAuth();
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editValue, setEditValue] = useState("");
@@ -143,11 +144,11 @@ export function BookList({ books, activeBookId, onSetActive, onTogglePublic, onU
                                 onClick={() => onSetActive(book.book_id)}
                                 disabled={isLoading}
                             >
-                                {isActive ? (
+                                {buttonLabel ? buttonLabel : (isActive ? (
                                     <span className="flex items-center"><Check className="mr-2 h-4 w-4" /> Editing</span>
                                 ) : (
                                     "Edit Book"
-                                )}
+                                ))}
                             </Button>
                         </CardFooter>
                     </Card>

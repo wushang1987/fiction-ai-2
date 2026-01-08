@@ -34,9 +34,7 @@ export const Home: React.FC = () => {
     }, []);
 
     const handleSelectBook = (bookId: string) => {
-        // If user is owner, they can edit. If not, they can only read.
-        // Navigation logic will be handled by App.tsx routes.
-        navigate(`/books/${bookId}`);
+        navigate(`/books/${bookId}/read`);
     };
 
     return (
@@ -66,6 +64,7 @@ export const Home: React.FC = () => {
                         activeBookId={null}
                         onSetActive={handleSelectBook}
                         isLoading={isLoading}
+                        buttonLabel="Read Book"
                     />
 
                     {publicBooks.length === 0 && !isLoading && (

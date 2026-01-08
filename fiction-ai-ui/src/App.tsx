@@ -21,6 +21,7 @@ import { Login } from "./pages/Login";
 import { Register } from "./pages/Register";
 import { VerifyEmail } from "./pages/VerifyEmail";
 import { Home } from "./pages/Home";
+import { ReadingPage } from "./pages/ReadingPage";
 import { useAuth } from "./contexts/AuthContext";
 
 import { Toaster } from "sonner";
@@ -38,7 +39,7 @@ function MainEditor() {
 
   // Derive view and tab from URL
   const activeView: View = location.pathname.startsWith("/snippets") ? "snippets" : "dashboard";
-  const activeBookTab: "outline" | "write" = location.pathname.endsWith("/write") ? "write" : "outline";
+  const activeBookTab: "outline" | "write" | "read" = location.pathname.endsWith("/write") ? "write" : (location.pathname.endsWith("/read") ? "read" : "outline");
 
   const [statusText, setStatusText] = useState<string>("");
 
@@ -414,6 +415,15 @@ function MainEditor() {
                     >
                       Writer
                     </button>
+                    <button
+                      onClick={() => navigate(`/books/${bookId}/read`)}
+                      className={cn(
+                        "px-4 py-1.5 text-sm font-medium rounded-md transition-all",
+                        activeBookTab === "read" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      Read
+                    </button>
                   </div>
                 </div>
               ) : viewTitles[activeView as keyof typeof viewTitles]}
@@ -506,6 +516,7 @@ function App() {
       <Route path="/register" element={!user ? <Register /> : <Navigate to="/" />} />
       <Route path="/verify-email" element={<VerifyEmail />} />
       <Route path="/" element={<Home />} />
+      <Route path="/books/:bookId/read/:chapterNumber?" element={<ReadingPage />} />
       <Route
         path="/books/:bookId/*"
         element={<MainEditor />}

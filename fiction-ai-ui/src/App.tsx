@@ -538,6 +538,10 @@ function MainEditor() {
           {activeView === "dashboard" && !bookId && (
             <div className="space-y-12">
               <div className="space-y-4">
+                <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest">Create New Novel</h3>
+                <CreateBookForm onSubmit={createBook} isLoading={booksState === "loading"} />
+              </div>
+              <div className="space-y-4">
                 <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest">Active Books</h3>
                 <BookList
                   books={books}
@@ -548,10 +552,6 @@ function MainEditor() {
                   onDelete={deleteBook}
                   isLoading={booksState === "loading"}
                 />
-              </div>
-              <div className="space-y-4">
-                <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest">Start New Project</h3>
-                <CreateBookForm onSubmit={createBook} isLoading={booksState === "loading"} />
               </div>
             </div>
           )}

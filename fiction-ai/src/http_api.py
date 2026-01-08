@@ -8,7 +8,7 @@ import re
 from typing import Any, Literal
 
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
@@ -16,15 +16,29 @@ from pydantic import BaseModel, Field
 try:
     # When running as module: `uvicorn src.http_api:app`
     from .llm.client import build_llm, has_llm_config
-    from .storage import book_store, project_store, snippet_store
+    from .storage import book_store, project_store, snippet_store, user_store
     from .writing.planner import OutlineRequest, make_outline_markdown
     from .writing.writer import ChapterRequest, stream_chapter_markdown, write_chapter_markdown
+    from .auth import (
+        create_access_token,
+        get_current_user_id,
+        get_password_hash,
+        verify_password,
+    )
+    from .email_service import send_verification_email
 except ImportError:  # pragma: no cover
     # When running with app-dir: `uvicorn http_api:app --app-dir src`
     from llm.client import build_llm, has_llm_config
-    from storage import book_store, project_store, snippet_store
+    from storage import book_store, project_store, snippet_store, user_store
     from writing.planner import OutlineRequest, make_outline_markdown
     from writing.writer import ChapterRequest, stream_chapter_markdown, write_chapter_markdown
+    from auth import (
+        create_access_token,
+        get_current_user_id,
+        get_password_hash,
+        verify_password,
+    )
+    from email_service import send_verification_email
 
 
 def _sse(event: str, data: Any) -> str:
@@ -177,6 +191,23 @@ class CreateSnippetRequest(BaseModel):
     book_id: str | None = None
 
 
+class UserRegisterRequest(BaseModel):
+    email: str
+    password: str
+    full_name: str
+
+
+class UserLoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+    user: dict[str, Any]
+
+
 app = FastAPI(title="fiction-ai", version="0.1.0")
 
 app.add_middleware(
@@ -192,6 +223,8 @@ app.add_middleware(
 def api_status() -> JSONResponse:
     load_dotenv()
     workspace_root = _workspace_root()
+    # Note: project_store is currently global/per-workspace. 
+    # In a multi-user system, we should filter by user_id.
     project = project_store.ensure_project(workspace_root)
     return _ok(
         {
@@ -207,20 +240,100 @@ def api_status() -> JSONResponse:
     )
 
 
+# --- Auth Endpoints ---
+
+@app.post("/api/auth/register")
+def api_register(req: UserRegisterRequest) -> JSONResponse:
+    email = req.email.lower().strip()
+    if user_store.get_user_by_email(email):
+        return _err(400, "USER_ALREADY_EXISTS", "User already exists")
+
+    hashed_password = get_password_hash(req.password)
+    user = user_store.create_user(email, hashed_password, req.full_name)
+    
+    # Send verification email
+    send_verification_email(user.email, user.verification_token, user.full_name)
+
+    return _ok(
+        {
+            "message": "User registered successfully. Please check your email to verify your account.",
+            "user": {
+                "user_id": user.user_id,
+                "email": user.email,
+                "full_name": user.full_name,
+                "is_verified": user.is_verified,
+            },
+        },
+        status_code=201,
+    )
+
+
+@app.post("/api/auth/login")
+def api_login(req: UserLoginRequest) -> JSONResponse:
+    email = req.email.lower().strip()
+    user = user_store.get_user_by_email(email)
+    if not user or not verify_password(req.password, user.password_hash):
+        return _err(401, "INVALID_CREDENTIALS", "Invalid email or password")
+
+    if not user.is_verified:
+        return _err(403, "EMAIL_NOT_VERIFIED", "Please verify your email address before logging in")
+
+    access_token = create_access_token(data={"sub": user.user_id})
+    return _ok(
+        {
+            "access_token": access_token,
+            "token_type": "bearer",
+            "user": {
+                "user_id": user.user_id,
+                "email": user.email,
+                "full_name": user.full_name,
+            },
+        }
+    )
+
+
+@app.get("/api/auth/verify-email")
+def api_verify_email(token: str) -> JSONResponse:
+    user = user_store.get_user_by_verification_token(token)
+    if not user:
+        return _err(400, "INVALID_TOKEN", "Invalid or expired verification token")
+
+    user_store.verify_user(user.user_id)
+    return _ok({"message": "Email verified successfully. You can now log in."})
+
+
+@app.get("/api/auth/me")
+def api_me(user_id: str = Depends(get_current_user_id)) -> JSONResponse:
+    user = user_store.get_user_by_id(user_id)
+    if not user:
+        return _err(404, "USER_NOT_FOUND", "User not found")
+    
+    return _ok({
+        "user_id": user.user_id,
+        "email": user.email,
+        "full_name": user.full_name,
+    })
+
+
+# --- Book Endpoints ---
+
 @app.get("/api/books")
-def api_list_books() -> JSONResponse:
+def api_list_books(user_id: str = Depends(get_current_user_id)) -> JSONResponse:
     workspace_root = _workspace_root()
     project = project_store.ensure_project(workspace_root)
+    # Filter books by user_id if they exist in project
+    user_books = [b for b in project.books if getattr(b, "user_id", None) == user_id or getattr(b, "user_id", None) is None]
+    
     return _ok(
         {
             "active_book_id": project.active_book_id,
-            "books": [asdict(b) for b in project.books],
+            "books": [asdict(b) for b in user_books],
         }
     )
 
 
 @app.post("/api/books")
-def api_create_book(req: CreateBookRequest) -> JSONResponse:
+def api_create_book(req: CreateBookRequest, user_id: str = Depends(get_current_user_id)) -> JSONResponse:
     premise = (req.premise or "").strip()
     if not premise:
         return _err(400, "VALIDATION_ERROR", "premise is required")
@@ -236,6 +349,10 @@ def api_create_book(req: CreateBookRequest) -> JSONResponse:
 
     title = (req.title or "").strip() or _guess_title_from_premise(premise)
     book_ref = project_store.create_book(workspace_root, project, title=title)
+    
+    # Store user_id in the book ref for filtering
+    setattr(book_ref, "user_id", user_id)
+    project_store.save_project(workspace_root, project)
 
     if not req.set_active:
         project_store.set_active_book(workspace_root, project, prev_active)
@@ -277,7 +394,7 @@ def api_create_book(req: CreateBookRequest) -> JSONResponse:
 
 
 @app.get("/api/books/active")
-def api_get_active_book() -> JSONResponse:
+def api_get_active_book(user_id: str = Depends(get_current_user_id)) -> JSONResponse:
     workspace_root = _workspace_root()
     project = project_store.ensure_project(workspace_root)
     if not project.active_book_id:
@@ -293,7 +410,7 @@ def api_get_active_book() -> JSONResponse:
 
 
 @app.put("/api/books/active")
-def api_set_active_book(req: SetActiveBookRequest) -> JSONResponse:
+def api_set_active_book(req: SetActiveBookRequest, user_id: str = Depends(get_current_user_id)) -> JSONResponse:
     book_id = (req.book_id or "").strip()
     if not book_id:
         return _err(400, "VALIDATION_ERROR", "book_id is required")
@@ -308,7 +425,7 @@ def api_set_active_book(req: SetActiveBookRequest) -> JSONResponse:
 
 
 @app.get("/api/books/{book_id}")
-def api_get_book(book_id: str) -> JSONResponse:
+def api_get_book(book_id: str, user_id: str = Depends(get_current_user_id)) -> JSONResponse:
     book_id = (book_id or "").strip()
     if not book_id:
         return _err(400, "VALIDATION_ERROR", "book_id is required")
@@ -322,7 +439,7 @@ def api_get_book(book_id: str) -> JSONResponse:
 
 
 @app.get("/api/books/{book_id}/outline")
-def api_get_outline(book_id: str) -> JSONResponse:
+def api_get_outline(book_id: str, user_id: str = Depends(get_current_user_id)) -> JSONResponse:
     workspace_root = _workspace_root()
     if not _book_exists(workspace_root, book_id):
         return _err(404, "BOOK_NOT_FOUND", "Book not found", {"book_id": book_id})
@@ -338,7 +455,7 @@ def api_get_outline(book_id: str) -> JSONResponse:
 
 
 @app.post("/api/books/{book_id}/outline")
-def api_generate_outline(book_id: str, req: GenerateOutlineRequest | None = None) -> JSONResponse:
+def api_generate_outline(book_id: str, req: GenerateOutlineRequest | None = None, user_id: str = Depends(get_current_user_id)) -> JSONResponse:
     llm_err = _require_llm()
     if llm_err is not None:
         return llm_err
@@ -366,7 +483,7 @@ def api_generate_outline(book_id: str, req: GenerateOutlineRequest | None = None
 
 
 @app.get("/api/books/{book_id}/chapters")
-def api_list_chapters(book_id: str) -> JSONResponse:
+def api_list_chapters(book_id: str, user_id: str = Depends(get_current_user_id)) -> JSONResponse:
     workspace_root = _workspace_root()
     if not _book_exists(workspace_root, book_id):
         return _err(404, "BOOK_NOT_FOUND", "Book not found", {"book_id": book_id})
@@ -376,7 +493,7 @@ def api_list_chapters(book_id: str) -> JSONResponse:
 
 
 @app.get("/api/books/{book_id}/chapters/{number}")
-def api_get_chapter(book_id: str, number: int) -> JSONResponse:
+def api_get_chapter(book_id: str, number: int, user_id: str = Depends(get_current_user_id)) -> JSONResponse:
     workspace_root = _workspace_root()
     if not _book_exists(workspace_root, book_id):
         return _err(404, "BOOK_NOT_FOUND", "Book not found", {"book_id": book_id})
@@ -402,7 +519,7 @@ def api_get_chapter(book_id: str, number: int) -> JSONResponse:
 
 
 @app.post("/api/books/{book_id}/chapters")
-def api_generate_chapter(book_id: str, req: GenerateChapterRequest) -> JSONResponse:
+def api_generate_chapter(book_id: str, req: GenerateChapterRequest, user_id: str = Depends(get_current_user_id)) -> JSONResponse:
     llm_err = _require_llm()
     if llm_err is not None:
         return llm_err
@@ -477,7 +594,7 @@ def api_generate_chapter(book_id: str, req: GenerateChapterRequest) -> JSONRespo
 
 
 @app.post("/api/books/{book_id}/chapters/all")
-def api_generate_all_chapters(book_id: str, req: GenerateAllChaptersRequest | None = None) -> JSONResponse:
+def api_generate_all_chapters(book_id: str, req: GenerateAllChaptersRequest | None = None, user_id: str = Depends(get_current_user_id)) -> JSONResponse:
     llm_err = _require_llm()
     if llm_err is not None:
         return llm_err
@@ -754,7 +871,7 @@ def api_generate_all_chapters_stream(
 
 
 @app.post("/api/snippets")
-def api_create_snippet(req: CreateSnippetRequest) -> JSONResponse:
+def api_create_snippet(req: CreateSnippetRequest, user_id: str = Depends(get_current_user_id)) -> JSONResponse:
     text = (req.text or "").strip()
     if not text:
         return _err(400, "VALIDATION_ERROR", "text is required")
@@ -780,7 +897,7 @@ def api_create_snippet(req: CreateSnippetRequest) -> JSONResponse:
 
 
 @app.get("/api/snippets/search")
-def api_search_snippets(q: str, book_id: str | None = None, limit: int = 5) -> JSONResponse:
+def api_search_snippets(q: str, book_id: str | None = None, limit: int = 5, user_id: str = Depends(get_current_user_id)) -> JSONResponse:
     q = (q or "").strip()
     if not q:
         return _err(400, "VALIDATION_ERROR", "q is required")

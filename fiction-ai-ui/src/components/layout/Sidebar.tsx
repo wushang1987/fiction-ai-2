@@ -1,6 +1,7 @@
-import { BookOpen, PenTool, LayoutTemplate, Sparkles, FileText, UserCircle } from "lucide-react";
+import { BookOpen, PenTool, LayoutTemplate, Sparkles, FileText, UserCircle, LogOut } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
+import { useAuth } from "../../contexts/AuthContext";
 
 interface SidebarProps {
     activeTab: "dashboard" | "write" | "outline" | "snippets";
@@ -9,6 +10,8 @@ interface SidebarProps {
 }
 
 export function Sidebar({ activeTab, onTabChange, statusText }: SidebarProps) {
+    const { user, logout } = useAuth();
+
     const NavItem = ({
         value,
         icon: Icon,
@@ -54,14 +57,23 @@ export function Sidebar({ activeTab, onTabChange, statusText }: SidebarProps) {
                 <NavItem value="snippets" icon={FileText} label="Snippets" />
             </div>
 
-            <div className="p-4 mt-auto border-t border-border">
+            <div className="p-4 mt-auto border-t border-border space-y-4">
                 <div className="flex items-center gap-3">
                     <UserCircle className="h-8 w-8 text-muted-foreground" />
                     <div className="flex flex-col min-w-0">
-                        <span className="text-xs font-semibold text-foreground">AI Editor</span>
+                        <span className="text-xs font-semibold text-foreground truncate">{user?.full_name || "Guest"}</span>
                         <span className="text-[10px] text-muted-foreground truncate">{statusText || "Ready"}</span>
                     </div>
                 </div>
+                <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full justify-center gap-2 text-xs"
+                    onClick={logout}
+                >
+                    <LogOut className="h-3 w-3" />
+                    Sign Out
+                </Button>
             </div>
         </div>
     );

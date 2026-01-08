@@ -195,9 +195,23 @@ export type CreateSnippetData = {
     snippet: Snippet
 }
 
-export type SearchSnippetsData = {
-    q: string
-    book_id: string | null
-    limit: number
-    snippets: Snippet[]
+export type UserRegisterRequest = {
+    email: string
+    password: string
+    full_name: string
+}
+
+export type UserLoginRequest = {
+    email: string
+    password: string
+}
+
+export type TokenResponse = {
+    access_token: string
+    token_type: string
+    user: {
+        user_id: string
+        email: string
+        full_name: string
+    }
 }

@@ -22,10 +22,12 @@ async function parseJsonSafe(res: Response): Promise<unknown> {
 }
 
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+    const token = localStorage.getItem('fiction_ai_token')
     const res = await fetch(path, {
         ...init,
         headers: {
             'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
             ...(init?.headers ?? {}),
         },
     })

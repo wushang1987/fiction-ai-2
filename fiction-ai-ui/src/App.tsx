@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { fictionApi } from "./api/fiction";
-import { ApiError } from "./api/client";
 import type { BookRef, ChapterRef, Snippet } from "./types";
 
 // Components
@@ -14,15 +14,20 @@ import { ChapterEditor } from "./components/features/chapters/ChapterEditor";
 import { SnippetManager } from "./components/features/snippets/SnippetManager";
 import { ThemeToggle } from "./components/layout/ThemeToggle";
 
+// Auth Pages
+import { Login } from "./pages/Login";
+import { Register } from "./pages/Register";
+import { VerifyEmail } from "./pages/VerifyEmail";
+import { useAuth } from "./contexts/AuthContext";
+
 import { Toaster } from "sonner";
 
 type LoadState = "idle" | "loading" | "error";
 type View = "dashboard" | "write" | "outline" | "snippets";
 
-function App() {
+function MainEditor() {
   const [activeView, setActiveView] = useState<View>("dashboard");
   const [statusText, setStatusText] = useState<string>("");
-  const [globalError, setGlobalError] = useState<string>("");
 
   const [booksState, setBooksState] = useState<LoadState>("idle");
   const [books, setBooks] = useState<BookRef[]>([]);
@@ -44,7 +49,6 @@ function App() {
 
   const [snippetState, setSnippetState] = useState<LoadState>("idle");
   const [snippetResults, setSnippetResults] = useState<Snippet[]>([]);
-  const [hasSearchedSnippets, setHasSearchedSnippets] = useState(false);
 
   // --- Theme ---
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -245,7 +249,6 @@ function App() {
 
   async function searchSnippets(q: string) {
     setSnippetState("loading");
-    setHasSearchedSnippets(true);
     try {
       const data = await fictionApi.searchSnippets(q);
       setSnippetResults(data.snippets);
@@ -341,6 +344,37 @@ function App() {
       </div>
       <Toaster position="bottom-right" richColors />
     </AppLayout>
+  );
+}
+
+function App() {
+  const { user, loading } = useAuth();
+  const location = useLocation();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+
+  return (
+    <Routes>
+      <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />
+      <Route path="/register" element={!user ? <Register /> : <Navigate to="/" />} />
+      <Route path="/verify-email" element={<VerifyEmail />} />
+      <Route
+        path="/*"
+        element={
+          user ? (
+            <MainEditor />
+          ) : (
+            <Navigate to="/login" state={{ from: location }} />
+          )
+        }
+      />
+    </Routes>
   );
 }
 

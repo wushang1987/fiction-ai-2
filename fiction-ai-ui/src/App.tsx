@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { Routes, Route, Navigate, useParams, useNavigate } from "react-router-dom";
 import { fictionApi } from "./api/fiction";
 import type { BookRef, ChapterRef, Snippet } from "./types";
 
@@ -18,14 +18,18 @@ import { ThemeToggle } from "./components/layout/ThemeToggle";
 import { Login } from "./pages/Login";
 import { Register } from "./pages/Register";
 import { VerifyEmail } from "./pages/VerifyEmail";
+import { Home } from "./pages/Home";
 import { useAuth } from "./contexts/AuthContext";
 
 import { Toaster } from "sonner";
 
 type LoadState = "idle" | "loading" | "error";
-type View = "dashboard" | "write" | "outline" | "snippets";
+type View = "dashboard" | "write" | "outline" | "snippets" | "home";
 
 function MainEditor() {
+  const { user } = useAuth();
+  const { bookId } = useParams();
+  const navigate = useNavigate();
   const [activeView, setActiveView] = useState<View>("dashboard");
   const [statusText, setStatusText] = useState<string>("");
 
@@ -85,7 +89,14 @@ function MainEditor() {
     try {
       const data = await fictionApi.listBooks();
       setBooks(data.books);
-      setActiveBookId(data.active_book_id);
+
+      // If we have a bookId in URL, prioritize it. 
+      // Otherwise use the active_book_id from server.
+      if (bookId) {
+        setActiveBookId(bookId);
+      } else {
+        setActiveBookId(data.active_book_id);
+      }
       setBooksState("idle");
     } catch (e) {
       setBooksState("error");
@@ -96,6 +107,8 @@ function MainEditor() {
     try {
       const data = await fictionApi.setActiveBook({ book_id });
       setActiveBookId(data.active_book_id);
+      // Navigate to the book view
+      navigate(`/books/${book_id}`);
     } catch (e) { }
   }
 
@@ -261,7 +274,7 @@ function MainEditor() {
   useEffect(() => {
     refreshStatus();
     refreshBooks();
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     if (activeBookId) {
@@ -270,16 +283,32 @@ function MainEditor() {
     }
   }, [activeBookId]);
 
+  async function togglePublic(book_id: string, is_public: boolean) {
+    try {
+      await fictionApi.toggleBookPublic(book_id, is_public);
+      await refreshBooks();
+    } catch (e) { }
+  }
+
   const viewTitles = {
+    home: "Discover",
     dashboard: "Library",
     outline: "Book Outline",
     write: "Writer Room",
     snippets: "Text Snippets"
   };
 
+  const handleTabChange = (tab: View) => {
+    if (tab === "home") {
+      navigate("/");
+    } else {
+      setActiveView(tab);
+    }
+  };
+
   return (
     <AppLayout
-      sidebar={<Sidebar activeTab={activeView} onTabChange={setActiveView} statusText={statusText} />}
+      sidebar={<Sidebar activeTab={activeView} onTabChange={handleTabChange} statusText={statusText} />}
     >
       <div className="space-y-8 pb-20">
         <header className="flex items-center justify-between">
@@ -295,7 +324,7 @@ function MainEditor() {
             <div className="space-y-12">
               <div className="space-y-4">
                 <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest">Active Books</h3>
-                <BookList books={books} activeBookId={activeBookId} onSetActive={setActive} isLoading={booksState === "loading"} />
+                <BookList books={books} activeBookId={activeBookId} onSetActive={setActive} onTogglePublic={togglePublic} isLoading={booksState === "loading"} />
               </div>
               <div className="space-y-4">
                 <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest">Start New Project</h3>
@@ -349,7 +378,6 @@ function MainEditor() {
 
 function App() {
   const { user, loading } = useAuth();
-  const location = useLocation();
 
   if (loading) {
     return (
@@ -364,16 +392,16 @@ function App() {
       <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />
       <Route path="/register" element={!user ? <Register /> : <Navigate to="/" />} />
       <Route path="/verify-email" element={<VerifyEmail />} />
+      <Route path="/" element={<Home />} />
       <Route
-        path="/*"
-        element={
-          user ? (
-            <MainEditor />
-          ) : (
-            <Navigate to="/login" state={{ from: location }} />
-          )
-        }
+        path="/books/:bookId/*"
+        element={<MainEditor />}
       />
+      <Route
+        path="/dashboard"
+        element={user ? <MainEditor /> : <Navigate to="/login" />}
+      />
+      <Route path="/*" element={<Navigate to="/" />} />
     </Routes>
   );
 }

@@ -24,6 +24,8 @@ class BookState:
     style_guide: str
     created_at: str
     updated_at: str
+    is_public: bool = False
+    user_id: str | None = None
 
 
 def ensure_book_dirs(workspace_root: Path, book_id: str) -> None:
@@ -43,6 +45,8 @@ def save_book(workspace_root: Path, state: BookState) -> None:
         "style_guide": state.style_guide,
         "created_at": state.created_at,
         "updated_at": state.updated_at,
+        "is_public": state.is_public,
+        "user_id": state.user_id,
     }
     col.replace_one({"book_id": state.book_id}, payload, upsert=True)
 
@@ -63,6 +67,8 @@ def load_book(workspace_root: Path, book_id: str) -> BookState:
         style_guide=str(data.get("style_guide", "")),
         created_at=str(data.get("created_at", _now_iso())),
         updated_at=str(data.get("updated_at", _now_iso())),
+        is_public=bool(data.get("is_public", False)),
+        user_id=data.get("user_id"),
     )
 
 
@@ -75,6 +81,8 @@ def create_book_state(
     genre: str,
     target_words: int | None,
     style_guide: str = "",
+    is_public: bool = False,
+    user_id: str | None = None,
 ) -> BookState:
     now = _now_iso()
     return BookState(
@@ -87,6 +95,8 @@ def create_book_state(
         style_guide=style_guide,
         created_at=now,
         updated_at=now,
+        is_public=is_public,
+        user_id=user_id,
     )
 
 

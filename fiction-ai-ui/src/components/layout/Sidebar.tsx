@@ -1,23 +1,25 @@
 import { BookOpen, PenTool, LayoutTemplate, Sparkles, FileText, UserCircle, LogOut } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
 import { useAuth } from "../../contexts/AuthContext";
 
 interface SidebarProps {
-    activeTab: "dashboard" | "write" | "outline" | "snippets";
-    onTabChange: (tab: "dashboard" | "write" | "outline" | "snippets") => void;
+    activeTab: "dashboard" | "write" | "outline" | "snippets" | "home";
+    onTabChange: (tab: "dashboard" | "write" | "outline" | "snippets" | "home") => void;
     statusText?: string;
 }
 
 export function Sidebar({ activeTab, onTabChange, statusText }: SidebarProps) {
     const { user, logout } = useAuth();
+    const navigate = useNavigate();
 
     const NavItem = ({
         value,
         icon: Icon,
         label
     }: {
-        value: "dashboard" | "write" | "outline" | "snippets",
+        value: "dashboard" | "write" | "outline" | "snippets" | "home",
         icon: React.ElementType,
         label: string
     }) => (
@@ -37,7 +39,7 @@ export function Sidebar({ activeTab, onTabChange, statusText }: SidebarProps) {
     return (
         <div className="flex h-full flex-col bg-background border-r border-border">
             <div className="flex h-16 items-center px-6 mb-4">
-                <div className="flex items-center gap-2 font-bold text-xl text-foreground">
+                <div className="flex items-center gap-2 font-bold text-xl text-foreground cursor-pointer" onClick={() => navigate("/")}>
                     <Sparkles className="h-5 w-5 text-primary" />
                     Fiction AI
                 </div>
@@ -47,6 +49,7 @@ export function Sidebar({ activeTab, onTabChange, statusText }: SidebarProps) {
                 <div className="px-3 mb-2">
                     <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Workspace</span>
                 </div>
+                <NavItem value="home" icon={Sparkles} label="Home" />
                 <NavItem value="dashboard" icon={BookOpen} label="Library" />
                 <NavItem value="outline" icon={LayoutTemplate} label="Outline" />
                 <NavItem value="write" icon={PenTool} label="Writer" />
@@ -65,6 +68,8 @@ export function Sidebar({ activeTab, onTabChange, statusText }: SidebarProps) {
                         <span className="text-[10px] text-muted-foreground truncate">{statusText || "Ready"}</span>
                     </div>
                 </div>
+            </div>
+            {user ? (
                 <Button
                     variant="outline"
                     size="sm"
@@ -74,7 +79,17 @@ export function Sidebar({ activeTab, onTabChange, statusText }: SidebarProps) {
                     <LogOut className="h-3 w-3" />
                     Sign Out
                 </Button>
-            </div>
+            ) : (
+                <Button
+                    variant="default"
+                    size="sm"
+                    className="w-full justify-center gap-2 text-xs"
+                    onClick={() => navigate("/login")}
+                >
+                    <UserCircle className="h-3 w-3" />
+                    Sign In
+                </Button>
+            )}
         </div>
     );
 }

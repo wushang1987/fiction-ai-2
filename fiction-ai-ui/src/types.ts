@@ -34,6 +34,8 @@ export type BookRef = {
     status: string
     created_at: string
     updated_at: string
+    is_public: boolean
+    user_id: string | null
 }
 
 export type Book = {
@@ -48,6 +50,8 @@ export type Book = {
     updated_at: string
     outline_exists: boolean
     chapters_count: number
+    is_public: boolean
+    user_id: string | null
 }
 
 export type ChapterRef = {
@@ -193,6 +197,10 @@ export type CreateSnippetRequest = {
 
 export type CreateSnippetData = {
     snippet: Snippet
+}
+
+export type SearchSnippetsData = {
+    snippets: Snippet[]
 }
 
 export type UserRegisterRequest = {

@@ -31,6 +31,8 @@ class BookRef:
     created_at: str
     updated_at: str
     status: str = "active"
+    is_public: bool = False
+    user_id: str | None = None
 
 
 @dataclass
@@ -92,6 +94,8 @@ def save_project(workspace_root: Path, state: ProjectState) -> None:
                 "created_at": b.created_at,
                 "updated_at": b.updated_at,
                 "status": b.status,
+                "is_public": b.is_public,
+                "user_id": b.user_id,
             }
             for b in state.books
         ],
@@ -108,6 +112,8 @@ def create_book(workspace_root: Path, state: ProjectState, *, title: str) -> Boo
         created_at=now,
         updated_at=now,
         status="active",
+        is_public=False,
+        user_id=None,
     )
     state.books.append(book)
     state.active_book_id = book.book_id

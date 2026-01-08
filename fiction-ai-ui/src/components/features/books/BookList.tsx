@@ -3,16 +3,19 @@ import { cn } from "../../../lib/utils";
 import { Card, CardHeader, CardTitle, CardDescription, CardFooter } from "../../ui/card";
 import { Button } from "../../ui/button";
 import { Badge } from "../../ui/badge";
-import { BookOpen, Check } from "lucide-react";
+import { BookOpen, Check, Globe, Lock } from "lucide-react";
+import { useAuth } from "../../../contexts/AuthContext";
 
 interface BookListProps {
     books: BookRef[];
     activeBookId: string | null;
     onSetActive: (id: string) => void;
+    onTogglePublic?: (id: string, is_public: boolean) => void;
     isLoading: boolean;
 }
 
-export function BookList({ books, activeBookId, onSetActive, isLoading }: BookListProps) {
+export function BookList({ books, activeBookId, onSetActive, onTogglePublic, isLoading }: BookListProps) {
+    const { user } = useAuth();
     if (books.length === 0 && !isLoading) {
         return (
             <div className="flex flex-col items-center justify-center py-20 bg-white dark:bg-slate-900 rounded-xl border border-dashed border-slate-300 dark:border-slate-700">
@@ -37,6 +40,26 @@ export function BookList({ books, activeBookId, onSetActive, isLoading }: BookLi
                                     {book.title}
                                 </CardTitle>
                                 {isActive && <Badge className="bg-primary text-primary-foreground">Active</Badge>}
+                                {onTogglePublic && book.user_id === user?.user_id && (
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-8 px-2 text-muted-foreground hover:text-foreground"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            onTogglePublic(book.book_id, !book.is_public);
+                                        }}
+                                    >
+                                        {book.is_public ? (
+                                            <Globe className="h-4 w-4 text-emerald-500 mr-1" />
+                                        ) : (
+                                            <Lock className="h-4 w-4 mr-1" />
+                                        )}
+                                        <span className="text-[10px] font-bold uppercase tracking-wider">
+                                            {book.is_public ? "Public" : "Private"}
+                                        </span>
+                                    </Button>
+                                )}
                             </div>
                             <CardDescription className="font-mono text-[10px] mt-1 opacity-70">
                                 ID: {book.book_id}

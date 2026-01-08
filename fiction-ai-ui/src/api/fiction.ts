@@ -81,4 +81,10 @@ export const fictionApi = {
         // We keep query param empty-string behavior to let backend treat it as "explicit".
         return apiFetch<SearchSnippetsData>(`/api/snippets/search?${usp.toString()}`)
     },
+
+    toggleBookPublic: (book_id: string, is_public: boolean) =>
+        apiFetch<{ book_id: string; is_public: boolean }>(`/api/books/${book_id}/public`, {
+            method: 'PATCH',
+            body: JSON.stringify({ is_public }),
+        }),
 }

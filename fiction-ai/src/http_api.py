@@ -22,6 +22,7 @@ try:
     from .auth import (
         create_access_token,
         get_current_user_id,
+        get_optional_user_id,
         get_password_hash,
         verify_password,
     )
@@ -35,6 +36,7 @@ except ImportError:  # pragma: no cover
     from auth import (
         create_access_token,
         get_current_user_id,
+        get_optional_user_id,
         get_password_hash,
         verify_password,
     )
@@ -318,11 +320,23 @@ def api_me(user_id: str = Depends(get_current_user_id)) -> JSONResponse:
 # --- Book Endpoints ---
 
 @app.get("/api/books")
-def api_list_books(user_id: str = Depends(get_current_user_id)) -> JSONResponse:
+def api_list_books(user_id: str | None = Depends(get_optional_user_id)) -> JSONResponse:
     workspace_root = _workspace_root()
     project = project_store.ensure_project(workspace_root)
-    # Filter books by user_id if they exist in project
-    user_books = [b for b in project.books if getattr(b, "user_id", None) == user_id or getattr(b, "user_id", None) is None]
+    
+    # Filter books:
+    # 1. If logged in: show their books + public books
+    # 2. If not logged in: only show public books
+    user_books = []
+    for b in project.books:
+        is_public = getattr(b, "is_public", False)
+        book_user_id = getattr(b, "user_id", None)
+        
+        if user_id:
+            if book_user_id == user_id or is_public:
+                user_books.append(b)
+        elif is_public:
+            user_books.append(b)
     
     return _ok(
         {
@@ -351,7 +365,7 @@ def api_create_book(req: CreateBookRequest, user_id: str = Depends(get_current_u
     book_ref = project_store.create_book(workspace_root, project, title=title)
     
     # Store user_id in the book ref for filtering
-    setattr(book_ref, "user_id", user_id)
+    book_ref.user_id = user_id
     project_store.save_project(workspace_root, project)
 
     if not req.set_active:
@@ -365,6 +379,7 @@ def api_create_book(req: CreateBookRequest, user_id: str = Depends(get_current_u
         genre=(req.genre or "").strip(),
         target_words=req.target_words,
         style_guide=(req.style_guide or "").strip(),
+        user_id=user_id,
     )
     book_store.save_book(workspace_root, bs)
 
@@ -394,7 +409,7 @@ def api_create_book(req: CreateBookRequest, user_id: str = Depends(get_current_u
 
 
 @app.get("/api/books/active")
-def api_get_active_book(user_id: str = Depends(get_current_user_id)) -> JSONResponse:
+def api_get_active_book(user_id: str | None = Depends(get_optional_user_id)) -> JSONResponse:
     workspace_root = _workspace_root()
     project = project_store.ensure_project(workspace_root)
     if not project.active_book_id:
@@ -425,24 +440,66 @@ def api_set_active_book(req: SetActiveBookRequest, user_id: str = Depends(get_cu
 
 
 @app.get("/api/books/{book_id}")
-def api_get_book(book_id: str, user_id: str = Depends(get_current_user_id)) -> JSONResponse:
+def api_get_book(book_id: str, user_id: str | None = Depends(get_optional_user_id)) -> JSONResponse:
     book_id = (book_id or "").strip()
     if not book_id:
         return _err(400, "VALIDATION_ERROR", "book_id is required")
 
     workspace_root = _workspace_root()
-    if not _book_exists(workspace_root, book_id):
+    
+    # Check if book exists and if user has access
+    project = project_store.ensure_project(workspace_root)
+    book_ref = next((b for b in project.books if b.book_id == book_id), None)
+    
+    if not book_ref:
         return _err(404, "BOOK_NOT_FOUND", "Book not found", {"book_id": book_id})
+
+    if not book_ref.is_public and book_ref.user_id != user_id:
+         return _err(403, "FORBIDDEN", "You do not have access to this book")
 
     active_book_id = _get_active_book_id(workspace_root)
     return _ok({"active_book_id": active_book_id, "book": _book_payload(workspace_root, book_id)})
 
 
-@app.get("/api/books/{book_id}/outline")
-def api_get_outline(book_id: str, user_id: str = Depends(get_current_user_id)) -> JSONResponse:
+class TogglePublicRequest(BaseModel):
+    is_public: bool
+
+
+@app.patch("/api/books/{book_id}/public")
+def api_toggle_book_public(book_id: str, req: TogglePublicRequest, user_id: str = Depends(get_current_user_id)) -> JSONResponse:
     workspace_root = _workspace_root()
-    if not _book_exists(workspace_root, book_id):
+    project = project_store.ensure_project(workspace_root)
+    book_ref = next((b for b in project.books if b.book_id == book_id), None)
+    
+    if not book_ref:
         return _err(404, "BOOK_NOT_FOUND", "Book not found", {"book_id": book_id})
+
+    if book_ref.user_id != user_id:
+        return _err(403, "FORBIDDEN", "Only the owner can toggle public status")
+
+    book_ref.is_public = req.is_public
+    project_store.save_project(workspace_root, project)
+    
+    # Also update BookState
+    bs = book_store.load_book(workspace_root, book_id)
+    bs.is_public = req.is_public
+    book_store.save_book(workspace_root, bs)
+    
+    return _ok({"book_id": book_id, "is_public": book_ref.is_public})
+
+
+@app.get("/api/books/{book_id}/outline")
+def api_get_outline(book_id: str, user_id: str | None = Depends(get_optional_user_id)) -> JSONResponse:
+    workspace_root = _workspace_root()
+    
+    project = project_store.ensure_project(workspace_root)
+    book_ref = next((b for b in project.books if b.book_id == book_id), None)
+    
+    if not book_ref:
+        return _err(404, "BOOK_NOT_FOUND", "Book not found", {"book_id": book_id})
+
+    if not book_ref.is_public and book_ref.user_id != user_id:
+         return _err(403, "FORBIDDEN", "You do not have access to this outline")
 
     outline = book_store.load_outline(workspace_root, book_id)
     return _ok(
@@ -483,20 +540,34 @@ def api_generate_outline(book_id: str, req: GenerateOutlineRequest | None = None
 
 
 @app.get("/api/books/{book_id}/chapters")
-def api_list_chapters(book_id: str, user_id: str = Depends(get_current_user_id)) -> JSONResponse:
+def api_list_chapters(book_id: str, user_id: str | None = Depends(get_optional_user_id)) -> JSONResponse:
     workspace_root = _workspace_root()
-    if not _book_exists(workspace_root, book_id):
+    
+    project = project_store.ensure_project(workspace_root)
+    book_ref = next((b for b in project.books if b.book_id == book_id), None)
+    
+    if not book_ref:
         return _err(404, "BOOK_NOT_FOUND", "Book not found", {"book_id": book_id})
+
+    if not book_ref.is_public and book_ref.user_id != user_id:
+         return _err(403, "FORBIDDEN", "You do not have access to these chapters")
 
     chapters = book_store.list_chapters(workspace_root, book_id)
     return _ok({"book_id": book_id, "chapters": chapters})
 
 
 @app.get("/api/books/{book_id}/chapters/{number}")
-def api_get_chapter(book_id: str, number: int, user_id: str = Depends(get_current_user_id)) -> JSONResponse:
+def api_get_chapter(book_id: str, number: int, user_id: str | None = Depends(get_optional_user_id)) -> JSONResponse:
     workspace_root = _workspace_root()
-    if not _book_exists(workspace_root, book_id):
+    
+    project = project_store.ensure_project(workspace_root)
+    book_ref = next((b for b in project.books if b.book_id == book_id), None)
+    
+    if not book_ref:
         return _err(404, "BOOK_NOT_FOUND", "Book not found", {"book_id": book_id})
+
+    if not book_ref.is_public and book_ref.user_id != user_id:
+         return _err(403, "FORBIDDEN", "You do not have access to this chapter")
 
     content = book_store.load_chapter(workspace_root, book_id, number=int(number))
     if content is None:
